@@ -31,6 +31,21 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== 타임라인 페이지 ==========
 
 function initTimeline() {
+    // 로컬 스토리지에서 필터 상태 복원
+    const savedFilter = localStorage.getItem('captureFilter');
+    if (savedFilter && ['all', 'tagged', 'untagged'].includes(savedFilter)) {
+        currentFilter = savedFilter;
+
+        // 필터 버튼 활성화 상태 업데이트
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        const filterBtn = document.querySelector(`.filter-btn[data-filter="${savedFilter}"]`);
+        if (filterBtn) {
+            filterBtn.classList.add('active');
+        }
+    }
+
     loadDates();
 }
 
@@ -130,6 +145,9 @@ async function loadCaptures(date) {
 function setFilter(filter) {
     currentFilter = filter;
     currentPage = 1;
+
+    // 로컬 스토리지에 필터 상태 저장
+    localStorage.setItem('captureFilter', filter);
 
     // 필터 버튼 활성화 상태 업데이트
     document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -249,8 +267,8 @@ function renderCaptures(captures, tags = []) {
         });
 
         const monitorImages = Object.entries(capture.monitors).map(([key, monitor]) => {
-            // filepath가 null이거나 없으면 이미지 삭제됨 표시
-            if (!monitor.filepath || monitor.filepath === 'null') {
+            // filepath가 null, 'null', 'DELETED'이면 이미지 삭제됨 표시
+            if (!monitor.filepath || monitor.filepath === 'null' || monitor.filepath === 'DELETED') {
                 return `<div class="deleted-image">이미지 삭제됨 (Monitor ${monitor.monitor_num})</div>`;
             }
             const filepath = monitor.filepath.replace(/\\/g, '/');
@@ -261,23 +279,21 @@ function renderCaptures(captures, tags = []) {
         // 이 캡처에 해당하는 태그 찾기
         const existingTag = tagMap[captureTime.getTime()];
 
-        // 카테고리 옵션 (선택된 값 유지)
-        const categoryOptions = categories.map(cat =>
-            `<option value="${cat.name}" ${existingTag && existingTag.category === cat.name ? 'selected' : ''}>${cat.name}</option>`
-        ).join('');
+        // 카테고리 버튼 생성
+        const categoryButtons = categories.map(cat => {
+            const isActive = existingTag && existingTag.category === cat.name ? 'active' : '';
+            return `<button class="category-btn ${isActive}" data-index="${index}" data-category="${cat.name}" onclick="selectCategory(${index}, '${cat.name}')">${cat.name}</button>`;
+        }).join('');
 
-        // 활동 옵션 (선택된 카테고리의 활동 목록)
-        let activityOptions = '<option value="">활동 선택</option>';
-        let activityDisabled = true;
-
+        // 활동 버튼 생성 (선택된 카테고리가 있을 때만)
+        let activityButtons = '';
         if (existingTag) {
             const category = categories.find(cat => cat.name === existingTag.category);
             if (category) {
-                activityOptions = '<option value="">활동 선택</option>' +
-                    category.activities.map(activity =>
-                        `<option value="${activity}" ${existingTag.activity === activity ? 'selected' : ''}>${activity}</option>`
-                    ).join('');
-                activityDisabled = false;
+                activityButtons = category.activities.map(activity => {
+                    const isActive = existingTag.activity === activity ? 'active' : '';
+                    return `<button class="activity-btn ${isActive}" data-index="${index}" data-activity="${activity}" onclick="selectActivity(${index}, '${existingTag.category}', '${activity}')">${activity}</button>`;
+                }).join('');
             }
         }
 
@@ -294,14 +310,13 @@ function renderCaptures(captures, tags = []) {
                 <div class="monitor-images">
                     ${monitorImages}
                 </div>
-                <div class="capture-tagging">
-                    <select class="tag-select category-select" data-index="${index}" onchange="onCategoryChange(${index})">
-                        <option value="">카테고리 선택</option>
-                        ${categoryOptions}
-                    </select>
-                    <select class="tag-select activity-select" data-index="${index}" ${activityDisabled ? 'disabled' : ''} onchange="onActivityChange(${index})">
-                        ${activityOptions}
-                    </select>
+                <div class="capture-tagging" data-selected-category="${existingTag ? existingTag.category : ''}">
+                    <div class="category-buttons">
+                        ${categoryButtons}
+                    </div>
+                    <div class="activity-buttons" ${!existingTag ? 'style="display:none;"' : ''}>
+                        ${activityButtons}
+                    </div>
                 </div>
             </div>
         `;
@@ -314,40 +329,61 @@ function openImage(url) {
 
 // ========== 인라인 태깅 ==========
 
-function onCategoryChange(index) {
-    const categorySelect = document.querySelector(`.category-select[data-index="${index}"]`);
-    const activitySelect = document.querySelector(`.activity-select[data-index="${index}"]`);
-    const categoryName = categorySelect.value;
+function selectCategory(index, categoryName) {
+    const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
+    const taggingDiv = captureItem.querySelector('.capture-tagging');
+    const activityButtonsDiv = taggingDiv.querySelector('.activity-buttons');
 
-    if (!categoryName) {
-        activitySelect.disabled = true;
-        activitySelect.innerHTML = '<option value="">활동 선택</option>';
+    // 이미 선택된 카테고리를 다시 클릭하면 숨기기
+    const currentCategory = taggingDiv.dataset.selectedCategory;
+    if (currentCategory === categoryName && activityButtonsDiv.style.display !== 'none') {
+        activityButtonsDiv.style.display = 'none';
+        taggingDiv.dataset.selectedCategory = '';
+
+        // 모든 카테고리 버튼 비활성화
+        taggingDiv.querySelectorAll('.category-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
         return;
     }
 
-    // 해당 카테고리의 활동 목록 가져오기
-    const category = categories.find(cat => cat.name === categoryName);
+    // 선택된 카테고리 저장
+    taggingDiv.dataset.selectedCategory = categoryName;
 
+    // 카테고리 버튼 활성화 상태 업데이트
+    taggingDiv.querySelectorAll('.category-btn').forEach(btn => {
+        if (btn.dataset.category === categoryName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // 해당 카테고리의 활동 버튼 생성
+    const category = categories.find(cat => cat.name === categoryName);
     if (category) {
-        const activityOptions = category.activities.map(activity =>
-            `<option value="${activity}">${activity}</option>`
+        const activityButtons = category.activities.map(activity =>
+            `<button class="activity-btn" data-index="${index}" data-activity="${activity}" onclick="selectActivity(${index}, '${categoryName}', '${activity}')">${activity}</button>`
         ).join('');
 
-        activitySelect.innerHTML = '<option value="">활동 선택</option>' + activityOptions;
-        activitySelect.disabled = false;
+        activityButtonsDiv.innerHTML = activityButtons;
+        activityButtonsDiv.style.display = 'flex';
     }
 }
 
-async function onActivityChange(index) {
-    const categorySelect = document.querySelector(`.category-select[data-index="${index}"]`);
-    const activitySelect = document.querySelector(`.activity-select[data-index="${index}"]`);
+async function selectActivity(index, category, activity) {
     const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
-
-    const category = categorySelect.value;
-    const activity = activitySelect.value;
     const timestamp = captureItem.dataset.timestamp;
+    const taggingDiv = captureItem.querySelector('.capture-tagging');
 
-    if (!category || !activity) return;
+    // 클릭된 활동 버튼 활성화 표시
+    taggingDiv.querySelectorAll('.activity-btn').forEach(btn => {
+        if (btn.dataset.activity === activity) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
 
     // 다음 캡처까지의 간격을 계산 (설정된 간격 사용)
     const startTime = new Date(timestamp);

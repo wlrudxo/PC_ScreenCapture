@@ -154,8 +154,8 @@ def add_tag():
             for rc in recent_captures:
                 print(f"  - {rc[0]}")
 
-            # 로컬 시간으로 captures 찾기
-            cursor.execute("SELECT id, timestamp, filepath FROM captures WHERE datetime(timestamp) = datetime(?)", (local_time,))
+            # 로컬 시간으로 captures 찾기 (이미 DELETED인 것은 제외)
+            cursor.execute("SELECT id, timestamp, filepath FROM captures WHERE datetime(timestamp) = datetime(?) AND filepath != 'DELETED'", (local_time,))
             captures = cursor.fetchall()
 
             print(f"[AutoDelete] 매칭된 캡처 개수: {len(captures)}")
@@ -163,11 +163,11 @@ def add_tag():
             # 매칭 안 되면 직접 비교 시도
             if len(captures) == 0:
                 print(f"[AutoDelete] datetime() 매칭 실패, 직접 비교 시도")
-                cursor.execute("SELECT id, timestamp, filepath FROM captures WHERE timestamp = ?", (local_time,))
+                cursor.execute("SELECT id, timestamp, filepath FROM captures WHERE timestamp = ? AND filepath != 'DELETED'", (local_time,))
                 captures = cursor.fetchall()
                 print(f"[AutoDelete] 직접 비교 결과: {len(captures)}개")
 
-            # 파일만 삭제 (DB 레코드는 유지)
+            # 파일 삭제 및 DB filepath를 'DELETED'로 변경
             deleted_count = 0
             for capture in captures:
                 capture_id = capture[0]
@@ -182,15 +182,15 @@ def add_tag():
                 else:
                     print(f"[Warning] 파일 없음: {filepath}")
 
-            # DB에서 filepath를 NULL로 업데이트 (이미지 삭제됨 표시)
+            # DB에서 filepath를 'DELETED'로 업데이트 (레코드는 유지)
             if len(captures) > 0:
-                cursor.execute("UPDATE captures SET filepath = NULL WHERE datetime(timestamp) = datetime(?)", (local_time,))
+                cursor.execute("UPDATE captures SET filepath = 'DELETED' WHERE datetime(timestamp) = datetime(?)", (local_time,))
                 conn.commit()
-                print(f"[AutoDelete] DB에서 {len(captures)}개 레코드의 filepath를 NULL로 업데이트")
+                print(f"[AutoDelete] DB에서 {len(captures)}개 레코드의 filepath를 'DELETED'로 업데이트")
 
             conn.close()
 
-            print(f"[AutoDelete] 완료: 이미지 파일 {deleted_count}개 삭제 (DB 레코드 유지, filepath=NULL)")
+            print(f"[AutoDelete] 완료: 이미지 파일 {deleted_count}개 삭제 (DB 레코드 유지, filepath='DELETED')")
 
         return jsonify({"success": True})
     except Exception as e:

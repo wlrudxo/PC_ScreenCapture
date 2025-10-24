@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScreenCapture - 타임라인</title>
+    <link rel="stylesheet" href="/static/style.css?v=6">
+</head>
+<body>
+    <div class="container">
+        <!-- 메인 사이드바 -->
+        <div class="main-sidebar">
+            <div class="main-sidebar-header">
+                <h1>📸 ScreenCapture</h1>
+            </div>
+            <div class="main-sidebar-nav">
+                <a href="/" class="active">타임라인</a>
+                <a href="/stats">통계</a>
+                <a href="/settings">설정</a>
+            </div>
+        </div>
+
+        <!-- 하위 사이드바 (날짜 선택) -->
+        <div class="sub-sidebar">
+            <h2>날짜 선택</h2>
+            <div id="dateList" class="date-list">
+                <p class="loading">로딩 중...</p>
+            </div>
+        </div>
+
+        <!-- 메인 콘텐츠 -->
+        <div class="main-content">
+            <div class="header">
+                <div class="header-top">
+                    <h2 id="selectedDate">날짜를 선택하세요</h2>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">전체</button>
+                        <button class="filter-btn" data-filter="tagged" onclick="setFilter('tagged')">분류</button>
+                        <button class="filter-btn" data-filter="untagged" onclick="setFilter('untagged')">미분류</button>
+                    </div>
+                </div>
+
+                <div class="bulk-tagging">
+                    <input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox" onchange="toggleSelectAll()" title="전체 선택">
+                    <span class="bulk-label">선택한 항목 태깅:</span>
+                    <select id="bulkCategory" class="bulk-select" onchange="onBulkCategoryChange()">
+                        <option value="">카테고리 선택</option>
+                    </select>
+                    <select id="bulkActivity" class="bulk-select" onchange="updateSelectedCount()" disabled>
+                        <option value="">활동 선택</option>
+                    </select>
+                    <button id="bulkSaveBtn" class="btn btn-primary" onclick="bulkSaveTags()" disabled>일괄 저장</button>
+                    <button id="bulkDeleteBtn" class="btn btn-danger" onclick="bulkDeleteCaptures()" disabled>일괄 삭제</button>
+                    <span id="selectedCount" class="selected-count">0개 선택됨</span>
+                </div>
+            </div>
+
+            <div id="captureGrid" class="capture-grid">
+                <p class="info-message">왼쪽에서 날짜를 선택하면 해당 날짜의 캡처 목록이 표시됩니다.</p>
+            </div>
+
+            <div class="pagination">
+                <button class="pagination-btn" id="prevBtn" onclick="prevPage()" disabled>이전</button>
+                <span id="pageInfo">1 / 1</span>
+                <button class="pagination-btn" id="nextBtn" onclick="nextPage()" disabled>다음</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=6"></script>
+</body>
+</html>

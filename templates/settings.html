@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScreenCapture - 설정</title>
+    <link rel="stylesheet" href="/static/style.css?v=2">
+</head>
+<body>
+    <div class="container">
+        <!-- 메인 사이드바 -->
+        <div class="main-sidebar">
+            <div class="main-sidebar-header">
+                <h1>📸 ScreenCapture</h1>
+            </div>
+            <div class="main-sidebar-nav">
+                <a href="/">타임라인</a>
+                <a href="/stats">통계</a>
+                <a href="/settings" class="active">설정</a>
+            </div>
+        </div>
+
+        <!-- 메인 콘텐츠 -->
+        <div class="settings-page">
+        <div class="settings-container">
+            <h2>설정</h2>
+
+            <!-- 캡처 상태 -->
+            <div class="settings-section">
+                <h3>캡처 상태</h3>
+                <div class="status-card">
+                    <div class="status-info">
+                        <span class="status-label">현재 상태:</span>
+                        <span id="captureStatus" class="status-value">확인 중...</span>
+                    </div>
+                    <div class="status-actions">
+                        <button id="pauseResumeBtn" class="btn btn-secondary">일시정지</button>
+                        <button id="manualCaptureBtn" class="btn btn-primary">즉시 캡처</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 캡처 설정 -->
+            <div class="settings-section">
+                <h3>캡처 설정</h3>
+                <div class="form-group">
+                    <label for="intervalMinutes">캡처 간격 (분)</label>
+                    <input type="number" id="intervalMinutes" min="1" max="60" />
+                    <small>현재 설정된 간격으로 자동 캡처됩니다.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="imageQuality">이미지 품질 (%)</label>
+                    <input type="range" id="imageQuality" min="50" max="100" />
+                    <span id="qualityValue">85</span>
+                    <small>품질이 높을수록 용량이 커집니다.</small>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="autoDelete" />
+                        태깅 후 자동으로 이미지 삭제
+                    </label>
+                    <small>활동 태깅 완료 후 해당 시간대의 이미지를 자동으로 삭제합니다.</small>
+                </div>
+
+                <button id="saveSettingsBtn" class="btn btn-primary">설정 저장</button>
+            </div>
+
+            <!-- 예약 종료 -->
+            <div class="settings-section">
+                <h3>예약 종료</h3>
+                <div class="form-group">
+                    <label for="scheduledStop">종료 예약 시간</label>
+                    <input type="time" id="scheduledStop" />
+                    <small>설정한 시간에 자동으로 캡처가 중지됩니다.</small>
+                </div>
+                <div class="scheduled-info">
+                    <span id="scheduledStopInfo">예약된 종료 없음</span>
+                </div>
+                <div class="form-actions">
+                    <button id="setScheduledStopBtn" class="btn btn-primary">예약 설정</button>
+                    <button id="cancelScheduledStopBtn" class="btn btn-secondary">예약 취소</button>
+                </div>
+            </div>
+
+            <!-- 저장 공간 정보 -->
+            <div class="settings-section">
+                <h3>저장 공간</h3>
+                <div class="storage-info">
+                    <div class="storage-item">
+                        <span class="storage-label">총 캡처 수:</span>
+                        <span id="totalCaptures" class="storage-value">로딩 중...</span>
+                    </div>
+                    <div class="storage-item">
+                        <span class="storage-label">예상 용량:</span>
+                        <span id="estimatedSize" class="storage-value">로딩 중...</span>
+                    </div>
+                </div>
+                <small>실제 용량은 해상도와 모니터 수에 따라 다를 수 있습니다.</small>
+            </div>
+
+            <!-- 위험 구역 -->
+            <div class="settings-section danger-zone">
+                <h3>위험 구역</h3>
+                <div class="form-group">
+                    <label>모든 캡처 이미지 삭제</label>
+                    <small>⚠️ 이 작업은 되돌릴 수 없습니다. 태그 정보는 유지됩니다.</small>
+                </div>
+                <button id="deleteAllImagesBtn" class="btn btn-danger">모든 이미지 삭제</button>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+{
+  "capture": {
+    "interval_minutes": 3,
+    "image_quality": 50,
+    "format": "JPEG"
+  },
+  "storage": {
+    "screenshots_dir": "./data/screenshots",
+    "database_path": "./data/activity.db",
+    "auto_delete_after_tagging": true
+  },
+  "viewer": {
+    "port": 5000,
+    "thumbnail_size": [
+      320,
+      180
+    ]
+  },
+  "categories": [
+    {
+      "name": "연구",
+      "color": "#4CAF50",
+      "activities": [
+        "코딩",
+        "자료 조사",
+        "논문 작성",
+        "PPT 제작",
+        "공부"
+      ]
+    },
+    {
+      "name": "행정",
+      "color": "#2196F3",
+      "activities": [
+        "메일",
+        "서류 작성",
+        "영수증 처리"
+      ]
+    },
+    {
+      "name": "개인",
+      "color": "#FF9800",
+      "activities": [
+        "언어 공부",
+        "앱 개발",
+        "인터넷",
+        "유튜브"
+      ]
+    },
+    {
+      "name": "기타",
+      "color": "#9E9E9E",
+      "activities": [
+        "자리 비움"
+      ]
+    }
+  ]
+}

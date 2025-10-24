@@ -1,0 +1,5 @@
+mss==9.0.1
+Pillow==10.4.0
+Flask==3.0.3
+pystray==0.19.5
+schedule==1.2.2

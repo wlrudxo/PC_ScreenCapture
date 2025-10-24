@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScreenCapture - 통계</title>
+    <link rel="stylesheet" href="/static/style.css?v=3">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 메인 사이드바 -->
+        <div class="main-sidebar">
+            <div class="main-sidebar-header">
+                <h1>📸 ScreenCapture</h1>
+            </div>
+            <div class="main-sidebar-nav">
+                <a href="/">타임라인</a>
+                <a href="/stats" class="active">통계</a>
+                <a href="/settings">설정</a>
+            </div>
+        </div>
+
+        <!-- 메인 콘텐츠 -->
+        <div class="stats-page">
+        <div class="stats-header">
+            <h2>활동 통계</h2>
+            <div class="date-range">
+                <label>시작일</label>
+                <input type="date" id="startDate" />
+                <label>종료일</label>
+                <input type="date" id="endDate" />
+                <button id="loadStats" class="btn btn-primary">조회</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="charts-column">
+                <div class="chart-container">
+                    <h3>카테고리별 시간 분포</h3>
+                    <canvas id="categoryChart"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h3>활동별 시간 사용량</h3>
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+
+            <div class="stats-table">
+                <h3>상세 내역</h3>
+                <table id="statsTable">
+                    <thead>
+                        <tr>
+                            <th>카테고리</th>
+                            <th>활동</th>
+                            <th>총 시간</th>
+                            <th>비율</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="info-message">기간을 선택하고 '조회' 버튼을 클릭하세요.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

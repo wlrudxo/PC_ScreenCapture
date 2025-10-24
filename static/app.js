@@ -165,17 +165,16 @@ function applyFilterAndRender() {
         return;
     }
 
-    // 태그를 타임스탬프로 매핑
+    // 태그를 capture_id로 매핑
     const tagMap = {};
     allTags.forEach(tag => {
-        const tagTime = new Date(tag.timestamp).getTime();
-        tagMap[tagTime] = tag;
+        tagMap[tag.capture_id] = tag;
     });
 
     // 필터링
     let filteredCaptures = allCaptures.filter(capture => {
-        const captureTime = new Date(capture.timestamp).getTime();
-        const isTagged = !!tagMap[captureTime];
+        const captureId = capture.capture_id;
+        const isTagged = !!tagMap[captureId];
 
         if (currentFilter === 'tagged') return isTagged;
         if (currentFilter === 'untagged') return !isTagged;
@@ -217,15 +216,15 @@ function prevPage() {
 }
 
 function nextPage() {
+    const tagMap = {};
+    allTags.forEach(tag => {
+        tagMap[tag.capture_id] = tag;
+    });
+
     const totalPages = Math.ceil(
         allCaptures.filter(capture => {
-            const captureTime = new Date(capture.timestamp).getTime();
-            const tagMap = {};
-            allTags.forEach(tag => {
-                const tagTime = new Date(tag.timestamp).getTime();
-                tagMap[tagTime] = tag;
-            });
-            const isTagged = !!tagMap[captureTime];
+            const captureId = capture.capture_id;
+            const isTagged = !!tagMap[captureId];
 
             if (currentFilter === 'tagged') return isTagged;
             if (currentFilter === 'untagged') return !isTagged;

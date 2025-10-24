@@ -43,7 +43,8 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME NOT NULL,
                 monitor_num INTEGER NOT NULL,
-                filepath TEXT NOT NULL
+                filepath TEXT,
+                deleted_at DATETIME
             )
         """)
 
@@ -54,7 +55,8 @@ class Database:
                 timestamp DATETIME NOT NULL,
                 category TEXT NOT NULL,
                 activity TEXT NOT NULL,
-                duration_min INTEGER NOT NULL
+                duration_min INTEGER NOT NULL,
+                capture_id INTEGER
             )
         """)
 
@@ -70,7 +72,9 @@ class Database:
 
         # 인덱스 생성
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_captures_timestamp ON captures(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_captures_deleted_at ON captures(deleted_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_timestamp ON tags(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_capture_id ON tags(capture_id)")
 
         conn.commit()
         conn.close()

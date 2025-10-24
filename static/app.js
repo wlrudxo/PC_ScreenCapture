@@ -278,20 +278,29 @@ function renderCaptures(captures, tags = []) {
         // 이 캡처에 해당하는 태그 찾기
         const existingTag = tagMap[captureId];
 
-        // 카테고리 버튼 생성
+        // 카테고리 버튼 생성 (v3.0: ID 기반, 색상 적용)
         const categoryButtons = categories.map(cat => {
-            const isActive = existingTag && existingTag.category === cat.name ? 'active' : '';
-            return `<button class="category-btn ${isActive}" data-capture-id="${captureId}" data-category="${cat.name}" onclick="selectCategory(${captureId}, '${cat.name}')">${cat.name}</button>`;
+            const isActive = existingTag && existingTag.category.id === cat.id ? 'active' : '';
+            const borderColor = cat.color;
+            const bgColor = isActive ? hexToRgba(cat.color, 0.1) : 'transparent';
+            return `<button class="category-btn ${isActive}"
+                            data-capture-id="${captureId}"
+                            data-category-id="${cat.id}"
+                            style="border: 2px solid ${borderColor}; background: ${bgColor};"
+                            onclick="selectCategory(${captureId}, ${cat.id})">${cat.name}</button>`;
         }).join('');
 
-        // 활동 버튼 생성 (선택된 카테고리가 있을 때만)
+        // 활동 버튼 생성 (선택된 카테고리가 있을 때만, v3.0: ID 기반)
         let activityButtons = '';
         if (existingTag) {
-            const category = categories.find(cat => cat.name === existingTag.category);
+            const category = categories.find(cat => cat.id === existingTag.category.id);
             if (category) {
                 activityButtons = category.activities.map(activity => {
-                    const isActive = existingTag.activity === activity ? 'active' : '';
-                    return `<button class="activity-btn ${isActive}" data-capture-id="${captureId}" data-activity="${activity}" onclick="selectActivity(${captureId}, '${existingTag.category}', '${activity}')">${activity}</button>`;
+                    const isActive = existingTag.activity.id === activity.id ? 'active' : '';
+                    return `<button class="activity-btn ${isActive}"
+                                    data-capture-id="${captureId}"
+                                    data-activity-id="${activity.id}"
+                                    onclick="selectActivity(${captureId}, ${existingTag.category.id}, ${activity.id})">${activity.name}</button>`;
                 }).join('');
             }
         }
@@ -395,21 +404,25 @@ function showModal() {
         return `<img src="/screenshots/${webPath}" alt="Monitor ${monitor.monitor_num}">`;
     }).join('');
 
-    // 카테고리 버튼 생성
+    // 카테고리 버튼 생성 (v3.0: ID 기반, 색상 적용)
     const existingTag = allTags.find(tag => tag.capture_id === capture.capture_id);
 
     modalCategories.innerHTML = categories.map(cat => {
-        const isActive = existingTag && existingTag.category === cat.name ? 'active' : '';
-        return `<button class="${isActive}" onclick="selectModalCategory('${cat.name}')">${cat.name}</button>`;
+        const isActive = existingTag && existingTag.category.id === cat.id ? 'active' : '';
+        const borderColor = cat.color;
+        const bgColor = isActive ? hexToRgba(cat.color, 0.1) : 'transparent';
+        return `<button class="${isActive}"
+                        style="border: 2px solid ${borderColor}; background: ${bgColor};"
+                        onclick="selectModalCategory(${cat.id})">${cat.name}</button>`;
     }).join('');
 
-    // 활동 버튼 생성 (태그가 있으면)
+    // 활동 버튼 생성 (태그가 있으면, v3.0: ID 기반)
     if (existingTag) {
-        const category = categories.find(cat => cat.name === existingTag.category);
+        const category = categories.find(cat => cat.id === existingTag.category.id);
         if (category) {
             modalActivities.innerHTML = category.activities.map(activity => {
-                const isActive = existingTag.activity === activity ? 'active' : '';
-                return `<button class="${isActive}" onclick="selectModalActivity('${existingTag.category}', '${activity}')">${activity}</button>`;
+                const isActive = existingTag.activity.id === activity.id ? 'active' : '';
+                return `<button class="${isActive}" onclick="selectModalActivity(${existingTag.category.id}, ${activity.id})">${activity.name}</button>`;
             }).join('');
             modalActivities.style.display = 'flex';
         }
@@ -446,44 +459,52 @@ function navigateModal(direction) {
     showModal();
 }
 
-function selectModalCategory(categoryName) {
+function selectModalCategory(categoryId) {
     const modalCategories = document.getElementById('modalCategories');
     const modalActivities = document.getElementById('modalActivities');
 
-    // 카테고리 버튼 활성화
+    // 카테고리 버튼 활성화 (v3.0: ID 기반, 색상 적용)
+    const category = categories.find(cat => cat.id == categoryId);
     modalCategories.querySelectorAll('button').forEach(btn => {
-        if (btn.textContent === categoryName) {
+        const btnCategoryName = btn.textContent;
+        const btnCategory = categories.find(c => c.name === btnCategoryName);
+
+        if (btnCategory && btnCategory.id == categoryId) {
             btn.classList.add('active');
+            btn.style.background = hexToRgba(btnCategory.color, 0.1);
         } else {
             btn.classList.remove('active');
+            if (btnCategory) {
+                btn.style.background = 'transparent';
+            }
         }
     });
 
-    // 활동 버튼 생성
-    const category = categories.find(cat => cat.name === categoryName);
+    // 활동 버튼 생성 (v3.0: ID 기반)
     if (category) {
         modalActivities.innerHTML = category.activities.map(activity =>
-            `<button onclick="selectModalActivity('${categoryName}', '${activity}')">${activity}</button>`
+            `<button onclick="selectModalActivity(${categoryId}, ${activity.id})">${activity.name}</button>`
         ).join('');
         modalActivities.style.display = 'flex';
     }
 }
 
-async function selectModalActivity(category, activity) {
+async function selectModalActivity(categoryId, activityId) {
     const capture = filteredCapturesForModal[currentModalIndex];
     const captureId = capture.capture_id;
 
-    // 활동 버튼 활성화
+    // 활동 버튼 활성화 (v3.0: ID 기반)
+    const activity = categories.find(c => c.id == categoryId)?.activities.find(a => a.id == activityId);
     const modalActivities = document.getElementById('modalActivities');
     modalActivities.querySelectorAll('button').forEach(btn => {
-        if (btn.textContent === activity) {
+        if (activity && btn.textContent === activity.name) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
         }
     });
 
-    // 태그 저장
+    // 태그 저장 (v3.0: category_id, activity_id)
     try {
         const response = await fetch('/api/tags', {
             method: 'POST',
@@ -492,8 +513,8 @@ async function selectModalActivity(category, activity) {
             },
             body: JSON.stringify({
                 capture_id: captureId,
-                category: category,
-                activity: activity
+                category_id: categoryId,
+                activity_id: activityId
             })
         });
 
@@ -554,41 +575,55 @@ function handleModalKeyboard(e) {
 
 // ========== 인라인 태깅 ==========
 
-function selectCategory(captureId, categoryName) {
+function selectCategory(captureId, categoryId) {
     const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
     const taggingDiv = captureItem.querySelector('.capture-tagging');
     const activityButtonsDiv = taggingDiv.querySelector('.activity-buttons');
 
     // 이미 선택된 카테고리를 다시 클릭하면 숨기기
-    const currentCategory = taggingDiv.dataset.selectedCategory;
-    if (currentCategory === categoryName && activityButtonsDiv.style.display !== 'none') {
+    const currentCategoryId = taggingDiv.dataset.selectedCategoryId;
+    if (currentCategoryId == categoryId && activityButtonsDiv.style.display !== 'none') {
         activityButtonsDiv.style.display = 'none';
-        taggingDiv.dataset.selectedCategory = '';
+        taggingDiv.dataset.selectedCategoryId = '';
 
-        // 모든 카테고리 버튼 비활성화
+        // 모든 카테고리 버튼 비활성화 및 스타일 초기화
         taggingDiv.querySelectorAll('.category-btn').forEach(btn => {
             btn.classList.remove('active');
+            const cat = categories.find(c => c.id == btn.dataset.categoryId);
+            if (cat) {
+                btn.style.background = 'transparent';
+            }
         });
         return;
     }
 
-    // 선택된 카테고리 저장
-    taggingDiv.dataset.selectedCategory = categoryName;
+    // 선택된 카테고리 저장 (v3.0: ID 기반)
+    taggingDiv.dataset.selectedCategoryId = categoryId;
 
-    // 카테고리 버튼 활성화 상태 업데이트
+    // 카테고리 버튼 활성화 상태 업데이트 (v3.0: 색상 적용)
     taggingDiv.querySelectorAll('.category-btn').forEach(btn => {
-        if (btn.dataset.category === categoryName) {
+        const btnCategoryId = btn.dataset.categoryId;
+        const cat = categories.find(c => c.id == btnCategoryId);
+
+        if (btnCategoryId == categoryId) {
             btn.classList.add('active');
+            if (cat) {
+                btn.style.background = hexToRgba(cat.color, 0.1);
+            }
         } else {
             btn.classList.remove('active');
+            btn.style.background = 'transparent';
         }
     });
 
-    // 해당 카테고리의 활동 버튼 생성
-    const category = categories.find(cat => cat.name === categoryName);
+    // 해당 카테고리의 활동 버튼 생성 (v3.0: ID 기반)
+    const category = categories.find(cat => cat.id == categoryId);
     if (category) {
         const activityButtons = category.activities.map(activity =>
-            `<button class="activity-btn" data-capture-id="${captureId}" data-activity="${activity}" onclick="selectActivity(${captureId}, '${categoryName}', '${activity}')">${activity}</button>`
+            `<button class="activity-btn"
+                     data-capture-id="${captureId}"
+                     data-activity-id="${activity.id}"
+                     onclick="selectActivity(${captureId}, ${categoryId}, ${activity.id})">${activity.name}</button>`
         ).join('');
 
         activityButtonsDiv.innerHTML = activityButtons;
@@ -596,20 +631,20 @@ function selectCategory(captureId, categoryName) {
     }
 }
 
-async function selectActivity(captureId, category, activity) {
+async function selectActivity(captureId, categoryId, activityId) {
     const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
     const taggingDiv = captureItem.querySelector('.capture-tagging');
 
-    // 클릭된 활동 버튼 활성화 표시
+    // 클릭된 활동 버튼 활성화 표시 (v3.0: ID 기반)
     taggingDiv.querySelectorAll('.activity-btn').forEach(btn => {
-        if (btn.dataset.activity === activity) {
+        if (btn.dataset.activityId == activityId) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
         }
     });
 
-    // 태그 저장 (capture_id 기반)
+    // 태그 저장 (v3.0: category_id, activity_id)
     try {
         const response = await fetch('/api/tags', {
             method: 'POST',
@@ -618,17 +653,18 @@ async function selectActivity(captureId, category, activity) {
             },
             body: JSON.stringify({
                 capture_id: captureId,
-                category: category,
-                activity: activity
+                category_id: categoryId,
+                activity_id: activityId
             })
         });
 
         const data = await response.json();
 
         if (data.success) {
-            // 성공 표시
+            // 성공 표시 (v3.0: 카테고리 색상으로 하이라이트)
             captureItem.classList.add('tagged');
-            captureItem.style.backgroundColor = '#e8f5e9';
+            const highlightColor = getCategoryColor(categoryId, 0.15);
+            captureItem.style.backgroundColor = highlightColor;
 
             // 약간의 딜레이 후 원래 색으로
             setTimeout(() => {
@@ -1537,4 +1573,20 @@ function showError(message) {
     console.error(message);
     // 간단한 알림 (나중에 토스트 알림으로 개선 가능)
     alert(message);
+}
+
+// v3.0: 색상 유틸리티
+function hexToRgba(hex, alpha = 1) {
+    // HEX를 RGBA로 변환
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getCategoryColor(categoryId, alpha = 1) {
+    // 카테고리 ID로 색상 조회
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) return `rgba(76, 175, 80, ${alpha})`; // 기본 녹색
+    return hexToRgba(category.color, alpha);
 }

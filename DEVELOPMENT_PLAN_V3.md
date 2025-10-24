@@ -419,18 +419,18 @@ if (data.success) {
 
 ---
 
-### Phase 5: 프론트엔드 - Timeline 색상 반영 (2시간)
+### Phase 5: 프론트엔드 - Timeline 색상 반영 (2시간) ✅ 완료
 
-- [ ] `hexToRgba()`, `getCategoryColor()` 유틸리티 추가
-- [ ] `loadCategories()` 수정 (activities 포함 응답)
-- [ ] `renderCaptures()` 수정
+- [x] `hexToRgba()`, `getCategoryColor()` 유틸리티 추가
+- [x] `loadCategories()` 수정 (activities 포함 응답)
+- [x] `renderCaptures()` 수정
   - category_id 기반 버튼
   - 카테고리 색상 스타일
-- [ ] `selectCategory()` 수정 (category_id)
-- [ ] `selectActivity()` 수정
+- [x] `selectCategory()` 수정 (category_id)
+- [x] `selectActivity()` 수정
   - category_id, activity_id 전송
   - 카테고리 색상 하이라이트
-- [ ] 모달 뷰어 색상 반영
+- [x] 모달 뷰어 색상 반영
 
 ---
 

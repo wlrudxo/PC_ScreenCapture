@@ -1083,6 +1083,9 @@ function initSettings() {
     // 저장 공간 정보 로드
     loadStorageInfo();
 
+    // 카테고리 목록 로드 (v3.0)
+    loadCategoriesForSettings();
+
     // 이벤트 리스너
     document.getElementById('imageQuality').addEventListener('input', function() {
         document.getElementById('qualityValue').textContent = this.value;
@@ -1094,6 +1097,7 @@ function initSettings() {
     document.getElementById('setScheduledStopBtn').addEventListener('click', setScheduledStop);
     document.getElementById('cancelScheduledStopBtn').addEventListener('click', cancelScheduledStop);
     document.getElementById('deleteAllImagesBtn').addEventListener('click', deleteAllImages);
+    document.getElementById('addCategoryBtn').addEventListener('click', addCategory);
 }
 
 async function loadCurrentSettings() {
@@ -1317,6 +1321,212 @@ async function deleteAllImages() {
         }
     } catch (error) {
         alert('서버 연결에 실패했습니다.');
+        console.error(error);
+    }
+}
+
+// ========== 카테고리 관리 (v3.0) ==========
+
+let categoriesData = [];
+
+async function loadCategoriesForSettings() {
+    try {
+        const response = await fetch('/api/categories');
+        const data = await response.json();
+
+        if (data.success) {
+            categoriesData = data.categories;
+            renderCategoriesForSettings();
+        }
+    } catch (error) {
+        console.error('카테고리 로드 실패:', error);
+    }
+}
+
+function renderCategoriesForSettings() {
+    const container = document.getElementById('category-list');
+    container.innerHTML = '';
+
+    categoriesData.forEach(category => {
+        const categoryEl = document.createElement('div');
+        categoryEl.className = 'category-item';
+        categoryEl.dataset.categoryId = category.id;
+
+        categoryEl.innerHTML = `
+            <div class="category-header">
+                <input type="color" value="${category.color}"
+                       onchange="updateCategoryColor(${category.id}, this.value)">
+                <input type="text" value="${category.name}"
+                       onblur="updateCategoryName(${category.id}, this.value)"
+                       class="category-name-input">
+                <button onclick="deleteCategory(${category.id})" class="btn btn-danger btn-sm">삭제</button>
+            </div>
+            <div class="activity-list">
+                ${category.activities.map(activity => `
+                    <div class="activity-item" data-activity-id="${activity.id}">
+                        <span class="drag-handle">⋮⋮</span>
+                        <input type="text" value="${activity.name}"
+                               onblur="updateActivityName(${activity.id}, this.value)"
+                               class="activity-name-input">
+                        <button onclick="deleteActivity(${activity.id})" class="btn btn-danger btn-sm">×</button>
+                    </div>
+                `).join('')}
+                <button onclick="addActivity(${category.id})" class="btn btn-secondary btn-sm">+ 활동 추가</button>
+            </div>
+        `;
+
+        container.appendChild(categoryEl);
+    });
+}
+
+async function addCategory() {
+    const name = prompt('새 카테고리 이름:');
+    if (!name) return;
+
+    const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+
+    try {
+        const response = await fetch('/api/categories', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, color })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            loadCategoriesForSettings();
+        } else {
+            alert('카테고리 추가 실패: ' + data.error);
+        }
+    } catch (error) {
+        alert('서버 연결 실패');
+        console.error(error);
+    }
+}
+
+async function updateCategoryName(categoryId, newName) {
+    if (!newName.trim()) return;
+
+    try {
+        const response = await fetch(`/api/categories/${categoryId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: newName })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alert('카테고리 수정 실패: ' + data.error);
+            loadCategoriesForSettings();
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function updateCategoryColor(categoryId, newColor) {
+    try {
+        const response = await fetch(`/api/categories/${categoryId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ color: newColor })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alert('색상 수정 실패: ' + data.error);
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function deleteCategory(categoryId) {
+    if (!confirm('이 카테고리를 삭제하시겠습니까?')) return;
+
+    try {
+        const response = await fetch(`/api/categories/${categoryId}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            loadCategoriesForSettings();
+        } else {
+            alert(data.error);
+        }
+    } catch (error) {
+        alert('서버 연결 실패');
+        console.error(error);
+    }
+}
+
+async function addActivity(categoryId) {
+    const name = prompt('새 활동 이름:');
+    if (!name) return;
+
+    try {
+        const response = await fetch(`/api/categories/${categoryId}/activities`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            loadCategoriesForSettings();
+        } else {
+            alert('활동 추가 실패: ' + data.error);
+        }
+    } catch (error) {
+        alert('서버 연결 실패');
+        console.error(error);
+    }
+}
+
+async function updateActivityName(activityId, newName) {
+    if (!newName.trim()) return;
+
+    try {
+        const response = await fetch(`/api/activities/${activityId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: newName })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alert('활동 수정 실패: ' + data.error);
+            loadCategoriesForSettings();
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function deleteActivity(activityId) {
+    if (!confirm('이 활동을 삭제하시겠습니까?')) return;
+
+    try {
+        const response = await fetch(`/api/activities/${activityId}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            loadCategoriesForSettings();
+        } else {
+            alert(data.error);
+        }
+    } catch (error) {
+        alert('서버 연결 실패');
         console.error(error);
     }
 }

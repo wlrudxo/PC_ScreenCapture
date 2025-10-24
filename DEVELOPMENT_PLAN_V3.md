@@ -407,15 +407,15 @@ if (data.success) {
 
 ---
 
-### Phase 4: 프론트엔드 - Settings UI (4시간)
+### Phase 4: 프론트엔드 - Settings UI (4시간) ✅ 완료
 
-- [ ] settings.html에 "카테고리 및 활동 관리" 섹션 추가
-- [ ] 카테고리 목록 렌더링 (색상 picker 포함)
-- [ ] 카테고리 CRUD 이벤트 핸들러
-- [ ] 활동 목록 렌더링 (카테고리별)
-- [ ] 활동 CRUD 이벤트 핸들러
-- [ ] 에러 처리 (RESTRICT 메시지 표시)
-- [ ] CSS 스타일링
+- [x] settings.html에 "카테고리 및 활동 관리" 섹션 추가
+- [x] 카테고리 목록 렌더링 (색상 picker 포함)
+- [x] 카테고리 CRUD 이벤트 핸들러
+- [x] 활동 목록 렌더링 (카테고리별)
+- [x] 활동 CRUD 이벤트 핸들러
+- [x] 에러 처리 (RESTRICT 메시지 표시)
+- [x] CSS 스타일링
 
 ---
 

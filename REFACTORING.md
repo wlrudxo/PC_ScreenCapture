@@ -464,54 +464,54 @@ if __name__ == "__main__":
 ## ✅ 구현 체크리스트
 
 ### Phase 0: 준비 (약 30분)
-- [ ] 현재 데이터베이스 전체 백업
-- [ ] migration.sql 파일 생성
-- [ ] migration.py 스크립트 작성
-- [ ] 테스트용 DB 복사본 생성
+- [x] 현재 데이터베이스 전체 백업
+- [x] migration.sql 파일 생성
+- [x] migration.py 스크립트 작성
+- [x] 테스트용 DB 복사본 생성
 
 ### Phase 1: 데이터베이스 마이그레이션 (약 1시간)
-- [ ] 테스트 DB에서 migration.sql 실행
-- [ ] orphan tags 확인 및 처리
-- [ ] 'DELETED' → NULL 변환 확인
-- [ ] 프로덕션 DB 마이그레이션 실행
-- [ ] 마이그레이션 검증
+- [x] 테스트 DB에서 migration.sql 실행
+- [x] orphan tags 확인 및 처리
+- [x] 'DELETED' → NULL 변환 확인
+- [x] 프로덕션 DB 마이그레이션 실행
+- [x] 마이그레이션 검증
 
 ### Phase 2: 백엔드 수정 (약 2-3시간)
 
 #### 2-1. database.py
-- [ ] `get_capture_by_id(capture_id)` 추가
-- [ ] `mark_capture_deleted(capture_id)` 추가
-- [ ] `get_captures_by_date()` - deleted_at 포함하여 반환
-- [ ] `add_tag()` - capture_id 파라미터 추가
+- [x] `get_capture_by_id(capture_id)` 추가
+- [x] `mark_capture_deleted(capture_id)` 추가
+- [x] `get_captures_by_date()` - deleted_at 포함하여 반환
+- [x] `add_tag()` - capture_id 파라미터 추가
 
 #### 2-2. viewer.py
-- [ ] `/api/captures/<date>` - capture_id 추가
-- [ ] `/api/tags` POST - capture_id 받도록 수정
-- [ ] `/api/captures/delete` - capture_ids 받도록 수정
-- [ ] 자동 삭제 로직 - capture_id 기반으로 단순화
-- [ ] UTC/로컬 시간 변환 로직 제거
+- [x] `/api/captures/<date>` - capture_id 추가
+- [x] `/api/tags` POST - capture_id 받도록 수정
+- [x] `/api/captures/delete` - capture_ids 받도록 수정
+- [x] 자동 삭제 로직 - capture_id 기반으로 단순화
+- [x] UTC/로컬 시간 변환 로직 제거
 
 ### Phase 3: 프론트엔드 수정 (약 2-3시간)
 
 #### 3-1. app.js - renderCaptures()
-- [ ] `data-index` → `data-capture-id` 변경
-- [ ] capture_id 추출 로직 추가
-- [ ] 이미지 렌더링: `'DELETED'` 체크 제거, `null` 체크만
+- [x] `data-index` → `data-capture-id` 변경
+- [x] capture_id 추출 로직 추가
+- [x] 이미지 렌더링: `'DELETED'` 체크 제거, `null` 체크만
 
 #### 3-2. app.js - 태깅 함수
-- [ ] `selectCategory(captureId, category)` - ID 파라미터
-- [ ] `selectActivity(captureId, category, activity)` - ID 파라미터
-- [ ] API 호출: `{ capture_id, category, activity }` 전송
-- [ ] timestamp 전송 로직 제거
+- [x] `selectCategory(captureId, category)` - ID 파라미터
+- [x] `selectActivity(captureId, category, activity)` - ID 파라미터
+- [x] API 호출: `{ capture_id, category, activity }` 전송
+- [x] timestamp 전송 로직 제거
 
 #### 3-3. app.js - 일괄 작업
-- [ ] `bulkSaveTags()` - capture_ids 수집
-- [ ] `bulkDeleteCaptures()` - capture_ids 전송
-- [ ] timestamp 수집 로직 제거
+- [x] `bulkSaveTags()` - capture_ids 수집
+- [x] `bulkDeleteCaptures()` - capture_ids 전송
+- [x] timestamp 수집 로직 제거
 
 #### 3-4. app.js - 태그맵
-- [ ] `tagMap[captureId]` 키 변경
-- [ ] timestamp 기반 비교 제거
+- [x] `tagMap[captureId]` 키 변경
+- [x] timestamp 기반 비교 제거
 
 ### Phase 4: 테스트 (약 2시간)
 - [ ] 단위 테스트: 각 API 엔드포인트

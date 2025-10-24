@@ -8,7 +8,16 @@
       "Bash(python check_db.py:*)",
       "Bash(git remote add:*)",
       "Bash(git add:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: PC Screen Capture application\n\n- Add screen capture functionality with periodic screenshots\n- Add web-based viewer with timeline and statistics\n- Add database for storing screenshot metadata and tags\n- Add .gitignore to exclude data folder and Python artifacts\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git init:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd documentation and refactor tagging UI before major refactoring\n\n- Add CLAUDE.md: Project documentation for Claude Code\n- Add REFACTORING.md: Detailed refactoring plan to use capture.id instead of timestamp\n- Change tagging UI from dropdowns to button groups\n- Add localStorage support for filter persistence\n- Fix auto-delete logic to use ''DELETED'' sentinel value\n- Add activity button selection highlight\n\nThis commit serves as a baseline before implementing the ID-based refactoring plan.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(python test_migration.py:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nRefactor: Migrate from timestamp-based to ID-based system\n\nMajor refactoring to use capture.id as primary key instead of timestamp matching.\nThis resolves timezone issues, improves performance, and simplifies the codebase.\n\n**Database Changes (Phase 0-1):**\n- Add migration scripts: migration.sql, migration.py, migrate_with_matching.py\n- Modify captures table: allow filepath NULL, add deleted_at column for soft delete\n- Modify tags table: add capture_id foreign key column\n- Convert ''DELETED'' sentinel strings to NULL\n- Migrate 192/200 tags successfully to capture_id references\n\n**Backend Changes (Phase 2):**\n- database.py: Add get_capture_by_id(), mark_capture_deleted() methods\n- database.py: Update add_tag() to accept capture_id parameter\n- viewer.py: Refactor /api/captures/<date> to include capture_id in response\n- viewer.py: Simplify /api/tags POST to use capture_id instead of timestamp\n- viewer.py: Update /api/captures/delete to use capture_ids array\n- Remove complex UTC/local timezone conversion logic\n\n**Frontend Changes (Phase 3):**\n- app.js: Change data-index to data-capture-id attributes\n- app.js: Update tag mapping from timestamp-based to capture_id-based\n- app.js: Simplify selectActivity() - remove timestamp calculation\n- app.js: Update bulkSaveTags() and bulkDeleteCaptures() to use capture_ids\n- app.js: Remove ''DELETED'' string checks, use null checks only\n\n**Documentation:**\n- Update REFACTORING.md: Mark Phase 0-3 as completed\n- Add migration test scripts for validation\n\n**Results:**\n- Code complexity reduced by ~30%\n- Eliminated timestamp matching bugs\n- Improved query performance (ID-based lookups)\n- Cleaner soft delete implementation\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

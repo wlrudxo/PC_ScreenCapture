@@ -239,8 +239,8 @@ function nextPage() {
     }
 }
 
-function toggleCapture(index) {
-    const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
+function toggleCapture(captureId) {
+    const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
     captureItem.classList.toggle('collapsed');
 }
 
@@ -252,14 +252,14 @@ function renderCaptures(captures, tags = []) {
         return;
     }
 
-    // 태그를 타임스탬프로 매핑
+    // 태그를 capture_id로 매핑
     const tagMap = {};
     tags.forEach(tag => {
-        const tagTime = new Date(tag.timestamp).getTime();
-        tagMap[tagTime] = tag;
+        tagMap[tag.capture_id] = tag;
     });
 
-    grid.innerHTML = captures.map((capture, index) => {
+    grid.innerHTML = captures.map((capture) => {
+        const captureId = capture.capture_id;
         const captureTime = new Date(capture.timestamp);
         const time = captureTime.toLocaleTimeString('ko-KR', {
             hour: '2-digit',
@@ -267,8 +267,8 @@ function renderCaptures(captures, tags = []) {
         });
 
         const monitorImages = Object.entries(capture.monitors).map(([key, monitor]) => {
-            // filepath가 null, 'null', 'DELETED'이면 이미지 삭제됨 표시
-            if (!monitor.filepath || monitor.filepath === 'null' || monitor.filepath === 'DELETED') {
+            // filepath가 null이면 이미지 삭제됨 표시
+            if (!monitor.filepath) {
                 return `<div class="deleted-image">이미지 삭제됨 (Monitor ${monitor.monitor_num})</div>`;
             }
             const filepath = monitor.filepath.replace(/\\/g, '/');
@@ -277,12 +277,12 @@ function renderCaptures(captures, tags = []) {
         }).join('');
 
         // 이 캡처에 해당하는 태그 찾기
-        const existingTag = tagMap[captureTime.getTime()];
+        const existingTag = tagMap[captureId];
 
         // 카테고리 버튼 생성
         const categoryButtons = categories.map(cat => {
             const isActive = existingTag && existingTag.category === cat.name ? 'active' : '';
-            return `<button class="category-btn ${isActive}" data-index="${index}" data-category="${cat.name}" onclick="selectCategory(${index}, '${cat.name}')">${cat.name}</button>`;
+            return `<button class="category-btn ${isActive}" data-capture-id="${captureId}" data-category="${cat.name}" onclick="selectCategory(${captureId}, '${cat.name}')">${cat.name}</button>`;
         }).join('');
 
         // 활동 버튼 생성 (선택된 카테고리가 있을 때만)
@@ -292,21 +292,21 @@ function renderCaptures(captures, tags = []) {
             if (category) {
                 activityButtons = category.activities.map(activity => {
                     const isActive = existingTag.activity === activity ? 'active' : '';
-                    return `<button class="activity-btn ${isActive}" data-index="${index}" data-activity="${activity}" onclick="selectActivity(${index}, '${existingTag.category}', '${activity}')">${activity}</button>`;
+                    return `<button class="activity-btn ${isActive}" data-capture-id="${captureId}" data-activity="${activity}" onclick="selectActivity(${captureId}, '${existingTag.category}', '${activity}')">${activity}</button>`;
                 }).join('');
             }
         }
 
         const isTagged = existingTag ? 'tagged' : '';
         const isCollapsed = existingTag ? 'collapsed' : '';
-        const toggleIcon = existingTag ? '<span class="toggle-icon" onclick="toggleCapture(' + index + ')">▼</span>' : '';
+        const toggleIcon = existingTag ? '<span class="toggle-icon" onclick="toggleCapture(' + captureId + ')">▼</span>' : '';
 
         return `
-            <div class="capture-item ${isTagged} ${isCollapsed}" data-timestamp="${capture.timestamp}" data-index="${index}">
+            <div class="capture-item ${isTagged} ${isCollapsed}" data-timestamp="${capture.timestamp}" data-capture-id="${captureId}">
                 <div class="capture-checkbox">
-                    <input type="checkbox" id="check-${index}" class="item-checkbox" onchange="updateSelectedCount()">
+                    <input type="checkbox" id="check-${captureId}" class="item-checkbox" onchange="updateSelectedCount()">
                 </div>
-                <div class="capture-time" onclick="toggleCapture(${index})">${time}${toggleIcon}</div>
+                <div class="capture-time" onclick="toggleCapture(${captureId})">${time}${toggleIcon}</div>
                 <div class="monitor-images">
                     ${monitorImages}
                 </div>
@@ -329,8 +329,8 @@ function openImage(url) {
 
 // ========== 인라인 태깅 ==========
 
-function selectCategory(index, categoryName) {
-    const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
+function selectCategory(captureId, categoryName) {
+    const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
     const taggingDiv = captureItem.querySelector('.capture-tagging');
     const activityButtonsDiv = taggingDiv.querySelector('.activity-buttons');
 
@@ -363,7 +363,7 @@ function selectCategory(index, categoryName) {
     const category = categories.find(cat => cat.name === categoryName);
     if (category) {
         const activityButtons = category.activities.map(activity =>
-            `<button class="activity-btn" data-index="${index}" data-activity="${activity}" onclick="selectActivity(${index}, '${categoryName}', '${activity}')">${activity}</button>`
+            `<button class="activity-btn" data-capture-id="${captureId}" data-activity="${activity}" onclick="selectActivity(${captureId}, '${categoryName}', '${activity}')">${activity}</button>`
         ).join('');
 
         activityButtonsDiv.innerHTML = activityButtons;
@@ -371,9 +371,8 @@ function selectCategory(index, categoryName) {
     }
 }
 
-async function selectActivity(index, category, activity) {
-    const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
-    const timestamp = captureItem.dataset.timestamp;
+async function selectActivity(captureId, category, activity) {
+    const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
     const taggingDiv = captureItem.querySelector('.capture-tagging');
 
     // 클릭된 활동 버튼 활성화 표시
@@ -385,24 +384,7 @@ async function selectActivity(index, category, activity) {
         }
     });
 
-    // 다음 캡처까지의 간격을 계산 (설정된 간격 사용)
-    const startTime = new Date(timestamp);
-
-    // config에서 간격 가져오기 (기본 3분)
-    let intervalMinutes = 3;
-    try {
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
-        if (configData.success) {
-            intervalMinutes = configData.config.capture.interval_minutes;
-        }
-    } catch (e) {
-        console.error('설정 로드 실패, 기본값 3분 사용:', e);
-    }
-
-    const endTime = new Date(startTime.getTime() + intervalMinutes * 60 * 1000);
-
-    // 태그 저장
+    // 태그 저장 (capture_id 기반)
     try {
         const response = await fetch('/api/tags', {
             method: 'POST',
@@ -410,8 +392,7 @@ async function selectActivity(index, category, activity) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                start_time: startTime.toISOString(),
-                end_time: endTime.toISOString(),
+                capture_id: captureId,
                 category: category,
                 activity: activity
             })
@@ -431,10 +412,9 @@ async function selectActivity(index, category, activity) {
 
             // allTags에 새 태그 추가 (다음 렌더링을 위해)
             allTags.push({
-                timestamp: timestamp,
+                capture_id: captureId,
                 category: category,
-                activity: activity,
-                duration_min: intervalMinutes
+                activity: activity
             });
 
             // 페이지 새로고침 없이 성공 표시만
@@ -566,29 +546,13 @@ async function bulkSaveTags() {
         return;
     }
 
-    // config에서 간격 가져오기
-    let intervalMinutes = 3;
-    try {
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
-        if (configData.success) {
-            intervalMinutes = configData.config.capture.interval_minutes;
-        }
-    } catch (e) {
-        console.error('설정 로드 실패, 기본값 3분 사용:', e);
-    }
-
     let successCount = 0;
     let failCount = 0;
 
     // 각 선택된 항목에 대해 태깅
     for (const checkbox of checkboxes) {
-        const index = checkbox.id.replace('check-', '');
-        const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
-        const timestamp = captureItem.dataset.timestamp;
-
-        const startTime = new Date(timestamp);
-        const endTime = new Date(startTime.getTime() + intervalMinutes * 60 * 1000);
+        const captureId = parseInt(checkbox.id.replace('check-', ''));
+        const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
 
         try {
             const response = await fetch('/api/tags', {
@@ -597,8 +561,7 @@ async function bulkSaveTags() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    start_time: startTime.toISOString(),
-                    end_time: endTime.toISOString(),
+                    capture_id: captureId,
                     category: category,
                     activity: activity
                 })
@@ -612,10 +575,9 @@ async function bulkSaveTags() {
 
                 // allTags에 새 태그 추가
                 allTags.push({
-                    timestamp: timestamp,
+                    capture_id: captureId,
                     category: category,
-                    activity: activity,
-                    duration_min: intervalMinutes
+                    activity: activity
                 });
             } else {
                 failCount++;
@@ -654,17 +616,14 @@ async function bulkDeleteCaptures() {
     }
 
     // 확인 메시지
-    const confirmed = confirm(`선택한 ${checkboxes.length}개 항목을 삭제하시겠습니까?\n\n⚠️ 이미지 파일과 DB 레코드가 모두 삭제됩니다.`);
+    const confirmed = confirm(`선택한 ${checkboxes.length}개 항목을 삭제하시겠습니까?`);
     if (!confirmed) return;
 
-    // 타임스탬프 목록 수집
-    const timestamps = [];
+    // capture_ids 목록 수집
+    const captureIds = [];
     checkboxes.forEach(checkbox => {
-        const index = checkbox.id.replace('check-', '');
-        const captureItem = document.querySelector(`.capture-item[data-index="${index}"]`);
-        if (captureItem) {
-            timestamps.push(captureItem.dataset.timestamp);
-        }
+        const captureId = parseInt(checkbox.id.replace('check-', ''));
+        captureIds.push(captureId);
     });
 
     try {
@@ -674,7 +633,7 @@ async function bulkDeleteCaptures() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                timestamps: timestamps
+                capture_ids: captureIds
             })
         });
 

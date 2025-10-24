@@ -77,11 +77,20 @@ def get_captures_by_date(date):
         for capture in captures:
             timestamp = capture['timestamp']
             if timestamp not in grouped:
-                grouped[timestamp] = {}
-            grouped[timestamp][f"m{capture['monitor_num']}"] = {
+                grouped[timestamp] = {
+                    'capture_id': None,  # 첫 번째 모니터 ID로 설정될 예정
+                    'monitors': {}
+                }
+
+            # 첫 번째 모니터의 ID를 대표 capture_id로 사용
+            if grouped[timestamp]['capture_id'] is None or capture['monitor_num'] == 1:
+                grouped[timestamp]['capture_id'] = capture['id']
+
+            grouped[timestamp]['monitors'][f"m{capture['monitor_num']}"] = {
                 "id": capture['id'],
                 "filepath": capture['filepath'],
-                "monitor_num": capture['monitor_num']
+                "monitor_num": capture['monitor_num'],
+                "deleted_at": capture.get('deleted_at')  # soft delete 정보 포함
             }
 
         # 시간순 정렬된 리스트로 변환
@@ -89,7 +98,8 @@ def get_captures_by_date(date):
         for timestamp in sorted(grouped.keys()):
             result.append({
                 "timestamp": timestamp,
-                "monitors": grouped[timestamp]
+                "capture_id": grouped[timestamp]['capture_id'],
+                "monitors": grouped[timestamp]['monitors']
             })
 
         return jsonify({"success": True, "captures": result})
@@ -112,85 +122,56 @@ def get_tags_by_date(date):
 @app.route('/api/tags', methods=['POST'])
 def add_tag():
     """
-    새 태그 추가
+    새 태그 추가 (ID 기반)
     """
     try:
         data = request.json
-        start_time = datetime.fromisoformat(data['start_time'])
-        end_time = datetime.fromisoformat(data['end_time'])
+        capture_id = data['capture_id']
         category = data['category']
         activity = data['activity']
 
-        # 지속 시간 계산 (분)
-        duration_min = int((end_time - start_time).total_seconds() / 60)
+        # capture 정보 조회
+        capture = db.get_capture_by_id(capture_id)
+        if not capture:
+            return jsonify({"success": False, "error": "Capture not found"}), 404
 
-        # 태그 추가
-        db.add_tag(start_time, category, activity, duration_min)
+        timestamp = datetime.fromisoformat(capture['timestamp'])
+
+        # duration 계산 (config에서)
+        duration_min = config['capture']['interval_minutes']
+
+        # 태그 추가 (capture_id 포함)
+        db.add_tag(timestamp, category, activity, duration_min, capture_id)
 
         # 자동 삭제 옵션이 켜져 있으면 이미지 삭제
         if config['storage']['auto_delete_after_tagging']:
-            print(f"[AutoDelete] 자동 삭제 시작")
-            print(f"[AutoDelete] 태그 저장된 시간 (UTC): {start_time}")
+            print(f"[AutoDelete] 자동 삭제 시작: capture_id={capture_id}")
 
-            # UTC 시간을 로컬 시간으로 변환
-            # start_time이 timezone-aware면 로컬 시간으로 변환
-            if start_time.tzinfo is not None:
-                # UTC를 로컬 시간으로 변환 (타임존 제거)
-                import datetime as dt
-                local_time = start_time.replace(tzinfo=dt.timezone.utc).astimezone(tz=None).replace(tzinfo=None)
-                print(f"[AutoDelete] 로컬 시간으로 변환: {local_time}")
-            else:
-                local_time = start_time
-                print(f"[AutoDelete] 이미 로컬 시간: {local_time}")
-
-            # DB에서 이 태그와 같은 시간의 캡처를 찾아서 삭제
+            # 같은 timestamp의 모든 파일 경로 조회
             conn = db._get_connection()
             cursor = conn.cursor()
+            cursor.execute("""
+                SELECT filepath FROM captures
+                WHERE datetime(timestamp) = datetime(?)
+                AND filepath IS NOT NULL
+            """, (timestamp,))
 
-            # DB에 어떤 timestamp들이 있는지 확인
-            cursor.execute("SELECT timestamp FROM captures ORDER BY timestamp DESC LIMIT 5")
-            recent_captures = cursor.fetchall()
-            print(f"[AutoDelete] DB의 최근 캡처 5개:")
-            for rc in recent_captures:
-                print(f"  - {rc[0]}")
+            filepaths = [row['filepath'] for row in cursor.fetchall()]
+            conn.close()
 
-            # 로컬 시간으로 captures 찾기 (이미 DELETED인 것은 제외)
-            cursor.execute("SELECT id, timestamp, filepath FROM captures WHERE datetime(timestamp) = datetime(?) AND filepath != 'DELETED'", (local_time,))
-            captures = cursor.fetchall()
-
-            print(f"[AutoDelete] 매칭된 캡처 개수: {len(captures)}")
-
-            # 매칭 안 되면 직접 비교 시도
-            if len(captures) == 0:
-                print(f"[AutoDelete] datetime() 매칭 실패, 직접 비교 시도")
-                cursor.execute("SELECT id, timestamp, filepath FROM captures WHERE timestamp = ? AND filepath != 'DELETED'", (local_time,))
-                captures = cursor.fetchall()
-                print(f"[AutoDelete] 직접 비교 결과: {len(captures)}개")
-
-            # 파일 삭제 및 DB filepath를 'DELETED'로 변경
+            # 파일 삭제
             deleted_count = 0
-            for capture in captures:
-                capture_id = capture[0]
-                capture_timestamp = capture[1]
-                filepath = Path(capture[2])
-                print(f"[AutoDelete] 처리 중: ID={capture_id}, timestamp={capture_timestamp}, file={filepath}")
-
+            for filepath_str in filepaths:
+                filepath = Path(filepath_str)
                 if filepath.exists():
                     filepath.unlink()
                     deleted_count += 1
-                    print(f"[Delete] 파일 삭제됨: {filepath}")
-                else:
-                    print(f"[Warning] 파일 없음: {filepath}")
+                    print(f"[AutoDelete] 파일 삭제: {filepath}")
 
-            # DB에서 filepath를 'DELETED'로 업데이트 (레코드는 유지)
-            if len(captures) > 0:
-                cursor.execute("UPDATE captures SET filepath = 'DELETED' WHERE datetime(timestamp) = datetime(?)", (local_time,))
-                conn.commit()
-                print(f"[AutoDelete] DB에서 {len(captures)}개 레코드의 filepath를 'DELETED'로 업데이트")
+            # DB에서 soft delete 처리
+            db.mark_capture_deleted(capture_id)
 
-            conn.close()
-
-            print(f"[AutoDelete] 완료: 이미지 파일 {deleted_count}개 삭제 (DB 레코드 유지, filepath='DELETED')")
+            print(f"[AutoDelete] 완료: {deleted_count}개 파일 삭제, DB soft delete 처리")
 
         return jsonify({"success": True})
     except Exception as e:
@@ -326,43 +307,48 @@ def serve_screenshot(filename):
 @app.route('/api/captures/delete', methods=['POST'])
 def delete_captures():
     """
-    선택된 캡처 삭제 (이미지 파일 + DB 레코드)
+    선택된 캡처 삭제 (ID 기반, soft delete)
     """
     try:
         data = request.json
-        timestamps = data.get('timestamps', [])
+        capture_ids = data.get('capture_ids', [])
 
-        if not timestamps:
+        if not capture_ids:
             return jsonify({"success": False, "error": "삭제할 항목이 없습니다."}), 400
 
         deleted_count = 0
 
-        for timestamp_str in timestamps:
+        for capture_id in capture_ids:
             try:
-                # 타임스탬프로 DB에서 캡처 정보 조회
-                timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                date_str = timestamp.strftime("%Y-%m-%d")
+                # 캡처 정보 조회
+                capture = db.get_capture_by_id(capture_id)
+                if not capture:
+                    continue
 
-                # DB에서 해당 타임스탬프의 모든 모니터 캡처 조회
-                captures = db.get_captures_by_date(date_str)
+                timestamp = capture['timestamp']
 
-                for capture in captures:
-                    if capture['timestamp'] == timestamp_str:
-                        # 파일 삭제
-                        filepath = Path(capture['filepath'])
-                        if filepath.exists():
-                            filepath.unlink()
-                            deleted_count += 1
-
-                # DB에서 레코드 삭제
+                # 같은 timestamp의 모든 파일 삭제
                 conn = db._get_connection()
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM captures WHERE timestamp = ?", (timestamp_str,))
-                conn.commit()
+                cursor.execute("""
+                    SELECT filepath FROM captures
+                    WHERE datetime(timestamp) = datetime(?)
+                    AND filepath IS NOT NULL
+                """, (timestamp,))
+
+                for row in cursor.fetchall():
+                    filepath = Path(row['filepath'])
+                    if filepath.exists():
+                        filepath.unlink()
+                        deleted_count += 1
+
                 conn.close()
 
+                # DB에서 soft delete
+                db.mark_capture_deleted(capture_id)
+
             except Exception as e:
-                print(f"[Error] 캡처 삭제 실패 ({timestamp_str}): {e}")
+                print(f"[Error] 캡처 삭제 실패 (ID={capture_id}): {e}")
                 continue
 
         return jsonify({

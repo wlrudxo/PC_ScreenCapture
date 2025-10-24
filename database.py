@@ -171,9 +171,62 @@ class Database:
 
         return deleted_count
 
+    def get_capture_by_id(self, capture_id: int) -> Optional[Dict]:
+        """
+        ID로 캡처 조회
+
+        Args:
+            capture_id: 조회할 캡처 ID
+
+        Returns:
+            캡처 정보 dict 또는 None
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM captures WHERE id = ?", (capture_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
+    def mark_capture_deleted(self, capture_id: int):
+        """
+        Soft delete: 같은 timestamp의 모든 모니터 삭제 처리
+        filepath = NULL, deleted_at = now()
+
+        Args:
+            capture_id: 삭제할 캡처 ID (어느 모니터든 가능)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 해당 캡처의 timestamp 조회
+        cursor.execute("SELECT timestamp FROM captures WHERE id = ?", (capture_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            conn.close()
+            return
+
+        timestamp = row['timestamp']
+
+        # 같은 timestamp의 모든 모니터 삭제 처리
+        cursor.execute("""
+            UPDATE captures
+            SET filepath = NULL, deleted_at = CURRENT_TIMESTAMP
+            WHERE datetime(timestamp) = datetime(?)
+        """, (timestamp,))
+
+        conn.commit()
+        conn.close()
+
     def delete_capture_by_id(self, capture_id: int) -> Optional[str]:
         """
-        특정 ID의 캡처 삭제
+        특정 ID의 캡처 삭제 (Hard delete - 실제 DB에서 삭제)
+
+        주의: 이 메서드는 레거시 코드입니다.
+        새 코드에서는 mark_capture_deleted()를 사용하세요.
 
         Args:
             capture_id: 삭제할 캡처 ID
@@ -203,7 +256,7 @@ class Database:
 
     # ========== Tags 관련 메서드 ==========
 
-    def add_tag(self, timestamp: datetime, category: str, activity: str, duration_min: int):
+    def add_tag(self, timestamp: datetime, category: str, activity: str, duration_min: int, capture_id: int = None):
         """
         활동 태그 추가
 
@@ -212,14 +265,15 @@ class Database:
             category: 카테고리 (연구, 행정, 개인, 기타)
             activity: 활동 (코딩, 메일, 인터넷 등)
             duration_min: 지속 시간 (분)
+            capture_id: 연결된 캡처 ID (선택)
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO tags (timestamp, category, activity, duration_min)
-            VALUES (?, ?, ?, ?)
-        """, (timestamp, category, activity, duration_min))
+            INSERT INTO tags (timestamp, category, activity, duration_min, capture_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, (timestamp, category, activity, duration_min, capture_id))
 
         conn.commit()
         conn.close()

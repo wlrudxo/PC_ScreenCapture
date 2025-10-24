@@ -5,6 +5,7 @@ Flask 웹 뷰어 및 API
 
 import json
 import os
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -110,10 +111,10 @@ def get_captures_by_date(date):
 @app.route('/api/tags/<date>', methods=['GET'])
 def get_tags_by_date(date):
     """
-    특정 날짜의 태그 목록 반환
+    특정 날짜의 태그 목록 반환 (v3.0: JOIN으로 카테고리/활동 상세 정보 포함)
     """
     try:
-        tags = db.get_tags_by_date(date)
+        tags = db.get_tags_by_date_with_details(date)
         return jsonify({"success": True, "tags": tags})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -122,13 +123,13 @@ def get_tags_by_date(date):
 @app.route('/api/tags', methods=['POST'])
 def add_tag():
     """
-    새 태그 추가 (ID 기반)
+    새 태그 추가 (ID 기반 - v3.0)
     """
     try:
         data = request.json
         capture_id = data['capture_id']
-        category = data['category']
-        activity = data['activity']
+        category_id = data['category_id']  # v3.0: INT ID
+        activity_id = data['activity_id']  # v3.0: INT ID
 
         # capture 정보 조회
         capture = db.get_capture_by_id(capture_id)
@@ -140,8 +141,8 @@ def add_tag():
         # duration 계산 (config에서)
         duration_min = config['capture']['interval_minutes']
 
-        # 태그 추가 (capture_id 포함)
-        db.add_tag(timestamp, category, activity, duration_min, capture_id)
+        # 태그 추가 (capture_id 포함, v3.0: category_id, activity_id)
+        db.add_tag(timestamp, category_id, activity_id, duration_min, capture_id)
 
         # 자동 삭제 옵션이 켜져 있으면 이미지 삭제
         if config['storage']['auto_delete_after_tagging']:
@@ -184,11 +185,119 @@ def add_tag():
 @app.route('/api/categories', methods=['GET'])
 def get_categories():
     """
-    카테고리 목록 반환
+    카테고리 목록 반환 (v3.0: activities 포함)
     """
     try:
         categories = db.get_categories()
         return jsonify({"success": True, "categories": categories})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/categories', methods=['POST'])
+def create_category():
+    """
+    카테고리 추가 (v3.0)
+    """
+    try:
+        data = request.json
+        name = data.get('name')
+        color = data.get('color', '#808080')
+        order_index = data.get('order_index', 0)
+
+        if not name:
+            return jsonify({"success": False, "error": "Name is required"}), 400
+
+        category_id = db.add_category(name, color, order_index)
+        return jsonify({"success": True, "id": category_id})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/categories/<int:category_id>', methods=['PUT'])
+def update_category(category_id):
+    """
+    카테고리 수정 (v3.0)
+    """
+    try:
+        data = request.json
+        name = data.get('name')
+        color = data.get('color')
+        order_index = data.get('order_index')
+
+        db.update_category(category_id, name, color, order_index)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/categories/<int:category_id>', methods=['DELETE'])
+def delete_category(category_id):
+    """
+    카테고리 삭제 (v3.0, ON DELETE RESTRICT)
+    """
+    try:
+        db.delete_category(category_id)
+        return jsonify({"success": True})
+    except sqlite3.IntegrityError as e:
+        # RESTRICT 에러: 태그가 연결되어 있음
+        return jsonify({
+            "success": False,
+            "error": "이 카테고리를 사용하는 태그가 있습니다. 먼저 태그를 삭제하거나 다른 카테고리로 변경하세요."
+        }), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/categories/<int:category_id>/activities', methods=['POST'])
+def create_activity(category_id):
+    """
+    활동 추가 (v3.0)
+    """
+    try:
+        data = request.json
+        name = data.get('name')
+        order_index = data.get('order_index', 0)
+
+        if not name:
+            return jsonify({"success": False, "error": "Name is required"}), 400
+
+        activity_id = db.add_activity(category_id, name, order_index)
+        return jsonify({"success": True, "id": activity_id})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/activities/<int:activity_id>', methods=['PUT'])
+def update_activity(activity_id):
+    """
+    활동 수정 (v3.0)
+    """
+    try:
+        data = request.json
+        name = data.get('name')
+        order_index = data.get('order_index')
+
+        db.update_activity(activity_id, name, order_index)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/activities/<int:activity_id>', methods=['DELETE'])
+def delete_activity(activity_id):
+    """
+    활동 삭제 (v3.0, ON DELETE RESTRICT)
+    """
+    try:
+        db.delete_activity(activity_id)
+        return jsonify({"success": True})
+    except sqlite3.IntegrityError as e:
+        # RESTRICT 에러: 태그가 연결되어 있음
+        return jsonify({
+            "success": False,
+            "error": "이 활동을 사용하는 태그가 있습니다. 먼저 태그를 삭제하거나 다른 활동으로 변경하세요."
+        }), 400
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

@@ -393,17 +393,17 @@ if (data.success) {
 
 ---
 
-### Phase 3: 백엔드 - viewer.py (2시간)
+### Phase 3: 백엔드 - viewer.py (2시간) ✅ 완료
 
-- [ ] `GET /api/categories` 수정 (activities 포함)
-- [ ] `POST /api/categories` 구현
-- [ ] `PUT /api/categories/:id` 구현
-- [ ] `DELETE /api/categories/:id` 구현 (RESTRICT 에러 처리)
-- [ ] `POST /api/categories/:id/activities` 구현
-- [ ] `PUT /api/activities/:id` 구현
-- [ ] `DELETE /api/activities/:id` 구현 (RESTRICT 에러 처리)
-- [ ] `POST /api/tags` 수정 (category_id, activity_id)
-- [ ] `GET /api/tags/<date>` 수정 (JOIN 응답)
+- [x] `GET /api/categories` 수정 (activities 포함)
+- [x] `POST /api/categories` 구현
+- [x] `PUT /api/categories/:id` 구현
+- [x] `DELETE /api/categories/:id` 구현 (RESTRICT 에러 처리)
+- [x] `POST /api/categories/:id/activities` 구현
+- [x] `PUT /api/activities/:id` 구현
+- [x] `DELETE /api/activities/:id` 구현 (RESTRICT 에러 처리)
+- [x] `POST /api/tags` 수정 (category_id, activity_id)
+- [x] `GET /api/tags/<date>` 수정 (JOIN 응답)
 
 ---
 

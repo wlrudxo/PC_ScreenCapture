@@ -272,7 +272,7 @@ function renderCaptures(captures, tags = []) {
             }
             const filepath = monitor.filepath.replace(/\\/g, '/');
             const webPath = filepath.split('data/screenshots/')[1];
-            return `<img src="/screenshots/${webPath}" alt="Monitor ${monitor.monitor_num}" onclick="openImage('/screenshots/${webPath}')">`;
+            return `<img src="/screenshots/${webPath}" alt="Monitor ${monitor.monitor_num}" onclick="openCaptureModal(${captureId})" style="cursor: pointer;">`;
         }).join('');
 
         // 이 캡처에 해당하는 태그 찾기
@@ -322,8 +322,234 @@ function renderCaptures(captures, tags = []) {
     }).join('');
 }
 
-function openImage(url) {
-    window.open(url, '_blank');
+// ========== 이미지 뷰어 모달 ==========
+
+let currentModalIndex = 0;  // 현재 표시 중인 캡처의 인덱스
+let filteredCapturesForModal = [];  // 모달용 필터링된 캡처 목록
+
+function openCaptureModal(captureId) {
+    // 현재 필터링된 캡처 목록 가져오기
+    const tagMap = {};
+    allTags.forEach(tag => {
+        tagMap[tag.capture_id] = tag;
+    });
+
+    filteredCapturesForModal = allCaptures.filter(capture => {
+        const cId = capture.capture_id;
+        const isTagged = !!tagMap[cId];
+
+        if (currentFilter === 'tagged') return isTagged;
+        if (currentFilter === 'untagged') return !isTagged;
+        return true;
+    });
+
+    // 클릭한 캡처의 인덱스 찾기
+    currentModalIndex = filteredCapturesForModal.findIndex(c => c.capture_id === captureId);
+
+    if (currentModalIndex === -1) {
+        console.error('Capture not found in filtered list');
+        return;
+    }
+
+    // 모달 표시
+    showModal();
+}
+
+function showModal() {
+    if (filteredCapturesForModal.length === 0) return;
+
+    const capture = filteredCapturesForModal[currentModalIndex];
+    const modal = document.getElementById('imageModal');
+    const modalImages = document.getElementById('modalImages');
+    const modalTime = document.getElementById('modalTime');
+    const modalCategories = document.getElementById('modalCategories');
+    const modalActivities = document.getElementById('modalActivities');
+
+    // 시간 표시
+    const captureTime = new Date(capture.timestamp);
+    const time = captureTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    const date = captureTime.toLocaleDateString('ko-KR');
+    modalTime.textContent = `${date} ${time}`;
+
+    // 이미지 표시
+    const monitors = Object.values(capture.monitors);
+    const monitorCount = monitors.length;
+
+    modalImages.className = 'modal-images';
+    if (monitorCount === 1) {
+        modalImages.classList.add('single-monitor');
+    } else {
+        modalImages.classList.add('dual-monitor');
+    }
+
+    modalImages.innerHTML = monitors.map(monitor => {
+        if (!monitor.filepath) {
+            return `<div class="deleted-image" style="grid-column: span ${monitorCount};">이미지 삭제됨</div>`;
+        }
+        const filepath = monitor.filepath.replace(/\\/g, '/');
+        const webPath = filepath.split('data/screenshots/')[1];
+        return `<img src="/screenshots/${webPath}" alt="Monitor ${monitor.monitor_num}">`;
+    }).join('');
+
+    // 카테고리 버튼 생성
+    const existingTag = allTags.find(tag => tag.capture_id === capture.capture_id);
+
+    modalCategories.innerHTML = categories.map(cat => {
+        const isActive = existingTag && existingTag.category === cat.name ? 'active' : '';
+        return `<button class="${isActive}" onclick="selectModalCategory('${cat.name}')">${cat.name}</button>`;
+    }).join('');
+
+    // 활동 버튼 생성 (태그가 있으면)
+    if (existingTag) {
+        const category = categories.find(cat => cat.name === existingTag.category);
+        if (category) {
+            modalActivities.innerHTML = category.activities.map(activity => {
+                const isActive = existingTag.activity === activity ? 'active' : '';
+                return `<button class="${isActive}" onclick="selectModalActivity('${existingTag.category}', '${activity}')">${activity}</button>`;
+            }).join('');
+            modalActivities.style.display = 'flex';
+        }
+    } else {
+        modalActivities.style.display = 'none';
+    }
+
+    // 모달 표시
+    modal.classList.add('active');
+
+    // 키보드 이벤트 리스너 추가
+    document.addEventListener('keydown', handleModalKeyboard);
+}
+
+function closeModal() {
+    const modal = document.getElementById('imageModal');
+    modal.classList.remove('active');
+    document.removeEventListener('keydown', handleModalKeyboard);
+}
+
+function navigateModal(direction) {
+    currentModalIndex += direction;
+
+    // 범위 체크
+    if (currentModalIndex < 0) {
+        currentModalIndex = 0;
+        return;
+    }
+    if (currentModalIndex >= filteredCapturesForModal.length) {
+        currentModalIndex = filteredCapturesForModal.length - 1;
+        return;
+    }
+
+    showModal();
+}
+
+function selectModalCategory(categoryName) {
+    const modalCategories = document.getElementById('modalCategories');
+    const modalActivities = document.getElementById('modalActivities');
+
+    // 카테고리 버튼 활성화
+    modalCategories.querySelectorAll('button').forEach(btn => {
+        if (btn.textContent === categoryName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // 활동 버튼 생성
+    const category = categories.find(cat => cat.name === categoryName);
+    if (category) {
+        modalActivities.innerHTML = category.activities.map(activity =>
+            `<button onclick="selectModalActivity('${categoryName}', '${activity}')">${activity}</button>`
+        ).join('');
+        modalActivities.style.display = 'flex';
+    }
+}
+
+async function selectModalActivity(category, activity) {
+    const capture = filteredCapturesForModal[currentModalIndex];
+    const captureId = capture.capture_id;
+
+    // 활동 버튼 활성화
+    const modalActivities = document.getElementById('modalActivities');
+    modalActivities.querySelectorAll('button').forEach(btn => {
+        if (btn.textContent === activity) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // 태그 저장
+    try {
+        const response = await fetch('/api/tags', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                capture_id: captureId,
+                category: category,
+                activity: activity
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // allTags에 새 태그 추가
+            const existingTagIndex = allTags.findIndex(tag => tag.capture_id === captureId);
+            if (existingTagIndex >= 0) {
+                allTags[existingTagIndex] = {
+                    capture_id: captureId,
+                    category: category,
+                    activity: activity
+                };
+            } else {
+                allTags.push({
+                    capture_id: captureId,
+                    category: category,
+                    activity: activity
+                });
+            }
+
+            // 짧은 딜레이 후 다음 캡처로 이동
+            setTimeout(() => {
+                if (currentModalIndex < filteredCapturesForModal.length - 1) {
+                    navigateModal(1);
+                } else {
+                    // 마지막 항목이면 모달 닫기
+                    closeModal();
+                    // 타임라인 새로고침
+                    if (currentDate) {
+                        loadCaptures(currentDate);
+                    }
+                }
+            }, 300);
+        } else {
+            alert('태그 저장에 실패했습니다: ' + data.error);
+        }
+    } catch (error) {
+        alert('서버 연결에 실패했습니다.');
+        console.error(error);
+    }
+}
+
+function handleModalKeyboard(e) {
+    switch(e.key) {
+        case 'Escape':
+            closeModal();
+            break;
+        case 'ArrowLeft':
+            navigateModal(-1);
+            break;
+        case 'ArrowRight':
+            navigateModal(1);
+            break;
+    }
 }
 
 // ========== 인라인 태깅 ==========

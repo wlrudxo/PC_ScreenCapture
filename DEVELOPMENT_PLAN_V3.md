@@ -361,35 +361,35 @@ if (data.success) {
 
 ## ✅ 개발 단계별 체크리스트
 
-### Phase 0: 백업 및 준비 (0.5시간)
+### Phase 0: 백업 및 준비 (0.5시간) ✅ 완료
 
-- [ ] 현재 DB 전체 백업
-- [ ] migration_v3.py 작성 (트랜잭션, 롤백, 검증 포함)
-- [ ] 로컬 테스트 DB 생성
-
----
-
-### Phase 1: 데이터베이스 마이그레이션 (2.5시간)
-
-- [ ] activities 테이블 생성
-- [ ] categories 확장 (order_index, updated_at)
-- [ ] config.json → activities 마이그레이션 (초기 시드)
-- [ ] tags 테이블 리팩토링 (TEXT → INT FK, ON DELETE RESTRICT)
-- [ ] 데이터 변환 및 검증 (실패 케이스 로깅)
-- [ ] 인덱스 생성
-- [ ] 프로덕션 DB 마이그레이션
+- [x] 현재 DB 전체 백업
+- [x] migration_v3.py 작성 (트랜잭션, 롤백, 검증 포함)
+- [x] 로컬 테스트 DB 생성
 
 ---
 
-### Phase 2: 백엔드 - database.py (3시간)
+### Phase 1: 데이터베이스 마이그레이션 (2.5시간) ✅ 완료
 
-- [ ] `init_categories()` 수정 ⚠️ **비어있을 때만 로드**
-- [ ] `get_categories_with_activities()` 구현 (JOIN)
-- [ ] `add_category()`, `update_category()`, `delete_category()` 구현
-- [ ] `add_activity()`, `update_activity()`, `delete_activity()` 구현
-- [ ] `add_tag()` 수정 (category_id, activity_id)
-- [ ] `get_tags_by_date_with_details()` 구현 (JOIN)
-- [ ] 통계 쿼리 수정 (JOIN 기반)
+- [x] activities 테이블 생성
+- [x] categories 확장 (order_index, updated_at)
+- [x] config.json → activities 마이그레이션 (초기 시드)
+- [x] tags 테이블 리팩토링 (TEXT → INT FK, ON DELETE RESTRICT)
+- [x] 데이터 변환 및 검증 (실패 케이스 로깅)
+- [x] 인덱스 생성
+- [x] 프로덕션 DB 마이그레이션
+
+---
+
+### Phase 2: 백엔드 - database.py (3시간) ✅ 완료
+
+- [x] `init_categories()` 수정 ⚠️ **비어있을 때만 로드**
+- [x] `get_categories_with_activities()` 구현 (JOIN)
+- [x] `add_category()`, `update_category()`, `delete_category()` 구현
+- [x] `add_activity()`, `update_activity()`, `delete_activity()` 구현
+- [x] `add_tag()` 수정 (category_id, activity_id)
+- [x] `get_tags_by_date_with_details()` 구현 (JOIN)
+- [x] 통계 쿼리 수정 (JOIN 기반)
 
 ---
 

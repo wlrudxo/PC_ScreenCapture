@@ -260,14 +260,14 @@ class Database:
 
     # ========== Tags 관련 메서드 ==========
 
-    def add_tag(self, timestamp: datetime, category: str, activity: str, duration_min: int, capture_id: int = None):
+    def add_tag(self, timestamp: datetime, category_id: int, activity_id: int, duration_min: int, capture_id: int = None):
         """
         활동 태그 추가
 
         Args:
             timestamp: 활동 시작 시간
-            category: 카테고리 (연구, 행정, 개인, 기타)
-            activity: 활동 (코딩, 메일, 인터넷 등)
+            category_id: 카테고리 ID
+            activity_id: 활동 ID
             duration_min: 지속 시간 (분)
             capture_id: 연결된 캡처 ID (선택)
         """
@@ -275,9 +275,9 @@ class Database:
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO tags (timestamp, category, activity, duration_min, capture_id)
+            INSERT INTO tags (timestamp, category_id, activity_id, duration_min, capture_id)
             VALUES (?, ?, ?, ?, ?)
-        """, (timestamp, category, activity, duration_min, capture_id))
+        """, (timestamp, category_id, activity_id, duration_min, capture_id))
 
         conn.commit()
         conn.close()
@@ -306,6 +306,71 @@ class Database:
 
         return [dict(row) for row in rows]
 
+    def get_tags_by_date_with_details(self, date: str) -> List[Dict]:
+        """
+        특정 날짜의 모든 태그 조회 (카테고리/활동 상세 정보 포함, JOIN)
+
+        Args:
+            date: 날짜 문자열 (YYYY-MM-DD)
+
+        Returns:
+            태그 정보 리스트 [
+                {
+                    'id': 1,
+                    'timestamp': '2025-10-24 15:01:08',
+                    'capture_id': 123,
+                    'duration_min': 3,
+                    'category': {'id': 1, 'name': '연구', 'color': '#4CAF50'},
+                    'activity': {'id': 2, 'name': '코딩'}
+                },
+                ...
+            ]
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                t.id,
+                t.timestamp,
+                t.capture_id,
+                t.duration_min,
+                c.id as category_id,
+                c.name as category_name,
+                c.color as category_color,
+                a.id as activity_id,
+                a.name as activity_name
+            FROM tags t
+            JOIN categories c ON t.category_id = c.id
+            JOIN activities a ON t.activity_id = a.id
+            WHERE DATE(t.timestamp) = ?
+            ORDER BY t.timestamp
+        """, (date,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        # 구조화된 형태로 변환
+        result = []
+        for row in rows:
+            result.append({
+                'id': row['id'],
+                'timestamp': row['timestamp'],
+                'capture_id': row['capture_id'],
+                'duration_min': row['duration_min'],
+                'category': {
+                    'id': row['category_id'],
+                    'name': row['category_name'],
+                    'color': row['category_color']
+                },
+                'activity': {
+                    'id': row['activity_id'],
+                    'name': row['activity_name']
+                }
+            })
+
+        return result
+
     def get_tags_by_date_range(self, start_date: str, end_date: str) -> List[Dict]:
         """
         날짜 범위 내의 모든 태그 조회
@@ -333,23 +398,31 @@ class Database:
 
     def get_category_stats(self, start_date: str, end_date: str) -> List[Dict]:
         """
-        기간별 카테고리 통계 조회
+        기간별 카테고리 통계 조회 (JOIN)
 
         Args:
             start_date: 시작 날짜 (YYYY-MM-DD)
             end_date: 종료 날짜 (YYYY-MM-DD)
 
         Returns:
-            카테고리별 총 시간 리스트
+            카테고리별 총 시간 리스트 [
+                {'category': '연구', 'category_id': 1, 'color': '#4CAF50', 'total_minutes': 180},
+                ...
+            ]
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT category, SUM(duration_min) as total_minutes
-            FROM tags
-            WHERE DATE(timestamp) BETWEEN ? AND ?
-            GROUP BY category
+            SELECT
+                c.id as category_id,
+                c.name as category,
+                c.color,
+                SUM(t.duration_min) as total_minutes
+            FROM tags t
+            JOIN categories c ON t.category_id = c.id
+            WHERE DATE(t.timestamp) BETWEEN ? AND ?
+            GROUP BY c.id, c.name, c.color
             ORDER BY total_minutes DESC
         """, (start_date, end_date))
 
@@ -360,23 +433,37 @@ class Database:
 
     def get_activity_stats(self, start_date: str, end_date: str) -> List[Dict]:
         """
-        기간별 활동 통계 조회
+        기간별 활동 통계 조회 (JOIN)
 
         Args:
             start_date: 시작 날짜 (YYYY-MM-DD)
             end_date: 종료 날짜 (YYYY-MM-DD)
 
         Returns:
-            활동별 총 시간 리스트
+            활동별 총 시간 리스트 [
+                {
+                    'category': '연구', 'category_id': 1,
+                    'activity': '코딩', 'activity_id': 2,
+                    'total_minutes': 120
+                },
+                ...
+            ]
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT category, activity, SUM(duration_min) as total_minutes
-            FROM tags
-            WHERE DATE(timestamp) BETWEEN ? AND ?
-            GROUP BY category, activity
+            SELECT
+                c.id as category_id,
+                c.name as category,
+                a.id as activity_id,
+                a.name as activity,
+                SUM(t.duration_min) as total_minutes
+            FROM tags t
+            JOIN categories c ON t.category_id = c.id
+            JOIN activities a ON t.activity_id = a.id
+            WHERE DATE(t.timestamp) BETWEEN ? AND ?
+            GROUP BY c.id, c.name, a.id, a.name
             ORDER BY total_minutes DESC
         """, (start_date, end_date))
 
@@ -391,46 +478,263 @@ class Database:
         """
         카테고리 초기화 (config.json에서 불러온 데이터)
 
+        ⚠️ 중요: DB가 비어있을 때만 초기 시드를 로드합니다.
+        이미 데이터가 있으면 config.json을 무시하고 DB 데이터를 유지합니다.
+
         Args:
-            categories: 카테고리 리스트
+            categories: 카테고리 리스트 (config.json)
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # 기존 카테고리 삭제
-        cursor.execute("DELETE FROM categories")
+        # 기존 카테고리 개수 확인
+        cursor.execute("SELECT COUNT(*) FROM categories")
+        count = cursor.fetchone()[0]
 
-        # 새 카테고리 추가
-        for cat in categories:
+        if count > 0:
+            # 이미 데이터가 있으면 스킵 (DB가 단일 진실 공급원)
+            conn.close()
+            return
+
+        # 비어있을 때만 config.json에서 초기 시드 로드
+        for idx, cat in enumerate(categories):
             cursor.execute("""
-                INSERT INTO categories (name, color, activities)
+                INSERT INTO categories (name, color, order_index)
                 VALUES (?, ?, ?)
-            """, (cat['name'], cat['color'], json.dumps(cat['activities'], ensure_ascii=False)))
+            """, (cat['name'], cat['color'], idx))
+
+            category_id = cursor.lastrowid
+
+            # 활동도 함께 추가
+            for act_idx, activity_name in enumerate(cat.get('activities', [])):
+                cursor.execute("""
+                    INSERT INTO activities (category_id, name, order_index)
+                    VALUES (?, ?, ?)
+                """, (category_id, activity_name, act_idx))
 
         conn.commit()
         conn.close()
 
     def get_categories(self) -> List[Dict]:
         """
-        모든 카테고리 조회
+        모든 카테고리 조회 (하위 호환성용)
 
         Returns:
-            카테고리 정보 리스트
+            카테고리 정보 리스트 (활동 포함)
+        """
+        return self.get_categories_with_activities()
+
+    def get_categories_with_activities(self) -> List[Dict]:
+        """
+        모든 카테고리와 활동 조회 (JOIN)
+
+        Returns:
+            카테고리 정보 리스트 [
+                {
+                    'id': 1,
+                    'name': '연구',
+                    'color': '#4CAF50',
+                    'order_index': 0,
+                    'activities': [
+                        {'id': 1, 'name': '코딩', 'order_index': 0},
+                        {'id': 2, 'name': '자료 조사', 'order_index': 1}
+                    ]
+                },
+                ...
+            ]
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM categories ORDER BY id")
-        rows = cursor.fetchall()
+        # 카테고리 조회
+        cursor.execute("SELECT * FROM categories ORDER BY order_index, id")
+        categories = [dict(row) for row in cursor.fetchall()]
+
+        # 각 카테고리의 활동 조회
+        for cat in categories:
+            cursor.execute("""
+                SELECT id, name, order_index
+                FROM activities
+                WHERE category_id = ?
+                ORDER BY order_index, id
+            """, (cat['id'],))
+            cat['activities'] = [dict(row) for row in cursor.fetchall()]
+
+        conn.close()
+        return categories
+
+    def add_category(self, name: str, color: str, order_index: int = 0) -> int:
+        """
+        카테고리 추가
+
+        Args:
+            name: 카테고리명
+            color: 색상 (HEX, #RRGGBB)
+            order_index: 정렬 순서
+
+        Returns:
+            생성된 카테고리 ID
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO categories (name, color, order_index)
+            VALUES (?, ?, ?)
+        """, (name, color, order_index))
+
+        category_id = cursor.lastrowid
+        conn.commit()
         conn.close()
 
-        result = []
-        for row in rows:
-            cat = dict(row)
-            cat['activities'] = json.loads(cat['activities'])
-            result.append(cat)
+        return category_id
 
-        return result
+    def update_category(self, category_id: int, name: str = None, color: str = None, order_index: int = None):
+        """
+        카테고리 수정
+
+        Args:
+            category_id: 수정할 카테고리 ID
+            name: 새 이름 (선택)
+            color: 새 색상 (선택)
+            order_index: 새 정렬 순서 (선택)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 변경할 필드만 업데이트
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+
+        if color is not None:
+            updates.append("color = ?")
+            params.append(color)
+
+        if order_index is not None:
+            updates.append("order_index = ?")
+            params.append(order_index)
+
+        if not updates:
+            conn.close()
+            return
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(category_id)
+
+        query = f"UPDATE categories SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, params)
+
+        conn.commit()
+        conn.close()
+
+    def delete_category(self, category_id: int):
+        """
+        카테고리 삭제
+
+        ⚠️ ON DELETE RESTRICT: 태그가 연결되어 있으면 에러 발생
+
+        Args:
+            category_id: 삭제할 카테고리 ID
+
+        Raises:
+            sqlite3.IntegrityError: 태그가 연결되어 있을 때
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+
+        conn.commit()
+        conn.close()
+
+    # ========== Activities 관련 메서드 ==========
+
+    def add_activity(self, category_id: int, name: str, order_index: int = 0) -> int:
+        """
+        활동 추가
+
+        Args:
+            category_id: 카테고리 ID
+            name: 활동명
+            order_index: 정렬 순서
+
+        Returns:
+            생성된 활동 ID
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO activities (category_id, name, order_index)
+            VALUES (?, ?, ?)
+        """, (category_id, name, order_index))
+
+        activity_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        return activity_id
+
+    def update_activity(self, activity_id: int, name: str = None, order_index: int = None):
+        """
+        활동 수정
+
+        Args:
+            activity_id: 수정할 활동 ID
+            name: 새 이름 (선택)
+            order_index: 새 정렬 순서 (선택)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 변경할 필드만 업데이트
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+
+        if order_index is not None:
+            updates.append("order_index = ?")
+            params.append(order_index)
+
+        if not updates:
+            conn.close()
+            return
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(activity_id)
+
+        query = f"UPDATE activities SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, params)
+
+        conn.commit()
+        conn.close()
+
+    def delete_activity(self, activity_id: int):
+        """
+        활동 삭제
+
+        ⚠️ ON DELETE RESTRICT: 태그가 연결되어 있으면 에러 발생
+
+        Args:
+            activity_id: 삭제할 활동 ID
+
+        Raises:
+            sqlite3.IntegrityError: 태그가 연결되어 있을 때
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
+
+        conn.commit()
+        conn.close()
 
 
 if __name__ == "__main__":
@@ -444,7 +748,8 @@ if __name__ == "__main__":
     db.add_capture(datetime.now(), 1, "./data/screenshots/2025-10-23/14-30-00_m1.jpg")
     db.add_capture(datetime.now(), 2, "./data/screenshots/2025-10-23/14-30-00_m2.jpg")
 
-    # 태그 추가
-    db.add_tag(datetime.now(), "연구", "코딩", 60)
+    # 태그 추가 (v3.0: category_id, activity_id 사용)
+    # 예: category_id=1 (연구), activity_id=1 (코딩)
+    db.add_tag(datetime.now(), category_id=1, activity_id=1, duration_min=60)
 
     print("데이터베이스 테스트 완료!")

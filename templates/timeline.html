@@ -70,32 +70,36 @@
     <!-- 이미지 뷰어 모달 -->
     <div id="imageModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTime">00:00</h3>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
             <div class="modal-body">
-                <div class="modal-nav-btn modal-prev" onclick="navigateModal(-1)">
-                    <span>◀</span>
-                </div>
-                <div class="modal-images" id="modalImages">
-                    <!-- 이미지들이 여기 표시됨 -->
-                </div>
-                <div class="modal-nav-btn modal-next" onclick="navigateModal(1)">
-                    <span>▶</span>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="modal-tagging">
-                    <div class="modal-categories" id="modalCategories">
-                        <!-- 카테고리 버튼들 -->
-                    </div>
-                    <div class="modal-activities" id="modalActivities" style="display:none;">
-                        <!-- 활동 버튼들 -->
+                <!-- 왼쪽: 이미지 영역 -->
+                <div class="modal-image-area">
+                    <div class="modal-images" id="modalImages">
+                        <!-- 이미지들이 여기 표시됨 -->
                     </div>
                 </div>
-                <div class="modal-hint">
-                    💡 화살표 키로 이동 | ESC로 닫기 | 태깅하면 자동으로 다음으로
+
+                <!-- 오른쪽: 사이드바 -->
+                <div class="modal-sidebar">
+                    <div class="modal-time">
+                        <h3 id="modalTime">00:00</h3>
+                    </div>
+                    <div class="modal-tagging">
+                        <h4>카테고리</h4>
+                        <div class="modal-categories" id="modalCategories">
+                            <!-- 카테고리 버튼들 -->
+                        </div>
+                        <h4 style="margin-top: 1rem;">활동</h4>
+                        <div class="modal-activities" id="modalActivities" style="display:none;">
+                            <!-- 활동 버튼들 -->
+                        </div>
+                    </div>
+                    <div class="modal-hint">
+                        <p>💡 <strong>단축키</strong></p>
+                        <p>← → : 이전/다음</p>
+                        <p>ESC : 닫기</p>
+                        <p>태깅 시 자동으로 다음으로 이동</p>
+                    </div>
                 </div>
             </div>
         </div>

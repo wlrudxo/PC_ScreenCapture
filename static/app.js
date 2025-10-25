@@ -374,7 +374,7 @@ function showModal() {
     const modalCategories = document.getElementById('modalCategories');
     const modalActivities = document.getElementById('modalActivities');
 
-    // 시간 표시
+    // 시간 표시 (날짜와 시간을 두 줄로)
     const captureTime = new Date(capture.timestamp);
     const time = captureTime.toLocaleTimeString('ko-KR', {
         hour: '2-digit',
@@ -382,7 +382,7 @@ function showModal() {
         second: '2-digit'
     });
     const date = captureTime.toLocaleDateString('ko-KR');
-    modalTime.textContent = `${date} ${time}`;
+    modalTime.innerHTML = `${date}<br>${time}`;
 
     // 이미지 표시
     const monitors = Object.values(capture.monitors);
@@ -493,8 +493,11 @@ async function selectModalActivity(categoryId, activityId) {
     const capture = filteredCapturesForModal[currentModalIndex];
     const captureId = capture.capture_id;
 
-    // 활동 버튼 활성화 (v3.0: ID 기반)
-    const activity = categories.find(c => c.id == categoryId)?.activities.find(a => a.id == activityId);
+    // 카테고리와 활동 정보 찾기 (v3.0: ID 기반)
+    const category = categories.find(c => c.id == categoryId);
+    const activity = category?.activities.find(a => a.id == activityId);
+
+    // 활동 버튼 활성화
     const modalActivities = document.getElementById('modalActivities');
     modalActivities.querySelectorAll('button').forEach(btn => {
         if (activity && btn.textContent === activity.name) {
@@ -521,20 +524,25 @@ async function selectModalActivity(categoryId, activityId) {
         const data = await response.json();
 
         if (data.success) {
-            // allTags에 새 태그 추가
+            // allTags에 새 태그 추가 (v3.0: ID 기반 구조)
             const existingTagIndex = allTags.findIndex(tag => tag.capture_id === captureId);
+            const tagData = {
+                capture_id: captureId,
+                category: {
+                    id: categoryId,
+                    name: category.name,
+                    color: category.color
+                },
+                activity: {
+                    id: activityId,
+                    name: activity.name
+                }
+            };
+
             if (existingTagIndex >= 0) {
-                allTags[existingTagIndex] = {
-                    capture_id: captureId,
-                    category: category,
-                    activity: activity
-                };
+                allTags[existingTagIndex] = tagData;
             } else {
-                allTags.push({
-                    capture_id: captureId,
-                    category: category,
-                    activity: activity
-                });
+                allTags.push(tagData);
             }
 
             // 짧은 딜레이 후 다음 캡처로 이동
@@ -706,12 +714,12 @@ async function loadCategories() {
         if (data.success) {
             categories = data.categories;
 
-            // 일괄 태깅 UI에 카테고리 옵션 추가
+            // 일괄 태깅 UI에 카테고리 옵션 추가 (v3.0: ID 기반)
             const bulkCategory = document.getElementById('bulkCategory');
             if (bulkCategory) {
                 categories.forEach(cat => {
                     const option = document.createElement('option');
-                    option.value = cat.name;
+                    option.value = cat.id;
                     option.textContent = cat.name;
                     bulkCategory.appendChild(option);
                 });
@@ -779,21 +787,21 @@ function updateSelectedCount() {
 function onBulkCategoryChange() {
     const bulkCategory = document.getElementById('bulkCategory');
     const bulkActivity = document.getElementById('bulkActivity');
-    const categoryName = bulkCategory.value;
+    const categoryId = parseInt(bulkCategory.value);
 
-    if (!categoryName) {
+    if (!categoryId) {
         bulkActivity.disabled = true;
         bulkActivity.innerHTML = '<option value="">활동 선택</option>';
         updateSelectedCount();
         return;
     }
 
-    // 해당 카테고리의 활동 목록 가져오기
-    const category = categories.find(cat => cat.name === categoryName);
+    // 해당 카테고리의 활동 목록 가져오기 (v3.0: ID 기반)
+    const category = categories.find(cat => cat.id === categoryId);
 
     if (category) {
         const activityOptions = category.activities.map(activity =>
-            `<option value="${activity}">${activity}</option>`
+            `<option value="${activity.id}">${activity.name}</option>`
         ).join('');
 
         bulkActivity.innerHTML = '<option value="">활동 선택</option>' + activityOptions;
@@ -808,18 +816,27 @@ async function bulkSaveTags() {
     const bulkActivity = document.getElementById('bulkActivity');
     const checkboxes = document.querySelectorAll('.item-checkbox:checked');
 
-    const category = bulkCategory.value;
-    const activity = bulkActivity.value;
+    const categoryId = parseInt(bulkCategory.value);
+    const activityId = parseInt(bulkActivity.value);
 
-    if (!category || !activity || checkboxes.length === 0) {
+    if (!categoryId || !activityId || checkboxes.length === 0) {
         alert('카테고리, 활동, 선택된 항목을 확인해주세요.');
+        return;
+    }
+
+    // 카테고리와 활동 정보 찾기 (v3.0: ID 기반)
+    const category = categories.find(c => c.id === categoryId);
+    const activity = category?.activities.find(a => a.id === activityId);
+
+    if (!category || !activity) {
+        alert('카테고리 또는 활동을 찾을 수 없습니다.');
         return;
     }
 
     let successCount = 0;
     let failCount = 0;
 
-    // 각 선택된 항목에 대해 태깅
+    // 각 선택된 항목에 대해 태깅 (v3.0: category_id, activity_id)
     for (const checkbox of checkboxes) {
         const captureId = parseInt(checkbox.id.replace('check-', ''));
         const captureItem = document.querySelector(`.capture-item[data-capture-id="${captureId}"]`);
@@ -832,8 +849,8 @@ async function bulkSaveTags() {
                 },
                 body: JSON.stringify({
                     capture_id: captureId,
-                    category: category,
-                    activity: activity
+                    category_id: categoryId,
+                    activity_id: activityId
                 })
             });
 
@@ -843,11 +860,18 @@ async function bulkSaveTags() {
                 successCount++;
                 captureItem.classList.add('tagged');
 
-                // allTags에 새 태그 추가
+                // allTags에 새 태그 추가 (v3.0: ID 기반 구조)
                 allTags.push({
                     capture_id: captureId,
-                    category: category,
-                    activity: activity
+                    category: {
+                        id: categoryId,
+                        name: category.name,
+                        color: category.color
+                    },
+                    activity: {
+                        id: activityId,
+                        name: activity.name
+                    }
                 });
             } else {
                 failCount++;
@@ -910,7 +934,7 @@ async function bulkDeleteCaptures() {
         const data = await response.json();
 
         if (data.success) {
-            alert(`${data.deleted_count}개 항목이 삭제되었습니다.`);
+            alert(`${data.deleted_records}개 레코드, ${data.deleted_files}개 파일이 삭제되었습니다.`);
 
             // 페이지 새로고침하여 삭제된 항목 제거 및 선택 상태 초기화
             if (currentDate) {

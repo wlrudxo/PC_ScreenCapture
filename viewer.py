@@ -12,22 +12,32 @@ from pathlib import Path
 from flask import Flask, render_template, jsonify, request, send_from_directory
 
 from database import Database
+from utils import ensure_config_exists, get_config_path, resolve_data_path
 
 
 app = Flask(__name__)
 
+# 설정 파일 확인 및 생성
+ensure_config_exists()
+config_path = get_config_path()
+
 # 설정 로드
-with open('./config.json', 'r', encoding='utf-8') as f:
+with open(config_path, 'r', encoding='utf-8') as f:
     config = json.load(f)
 
+# 경로 해석 (상대 경로 → 절대 경로)
+db_path = resolve_data_path(config['storage']['database_path'])
+screenshots_path = resolve_data_path(config['storage']['screenshots_dir'])
+
 # 데이터베이스 초기화
-db = Database(config['storage']['database_path'])
+db = Database(str(db_path))
 
 # 카테고리 초기화 (DB가 비어있을 때만 config.json에서 로드)
 db.init_categories(config['categories'])
 
 # 스크린샷 디렉토리
-screenshots_dir = Path(config['storage']['screenshots_dir'])
+screenshots_dir = screenshots_path
+screenshots_dir.mkdir(parents=True, exist_ok=True)
 
 
 # ========== 웹 페이지 라우트 ==========
@@ -419,7 +429,7 @@ def serve_screenshot(filename):
 @app.route('/api/captures/delete', methods=['POST'])
 def delete_captures():
     """
-    선택된 캡처 삭제 (ID 기반, soft delete)
+    선택된 캡처 삭제 (ID 기반, hard delete - DB에서 완전 삭제)
     """
     try:
         data = request.json
@@ -428,7 +438,8 @@ def delete_captures():
         if not capture_ids:
             return jsonify({"success": False, "error": "삭제할 항목이 없습니다."}), 400
 
-        deleted_count = 0
+        deleted_files = 0
+        deleted_records = 0
 
         for capture_id in capture_ids:
             try:
@@ -439,35 +450,52 @@ def delete_captures():
 
                 timestamp = capture['timestamp']
 
-                # 같은 timestamp의 모든 파일 삭제
+                # 같은 timestamp의 모든 파일 경로 조회 및 삭제
                 conn = db._get_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT filepath FROM captures
+                    SELECT id, filepath FROM captures
                     WHERE datetime(timestamp) = datetime(?)
-                    AND filepath IS NOT NULL
                 """, (timestamp,))
 
-                for row in cursor.fetchall():
-                    filepath = Path(row['filepath'])
-                    if filepath.exists():
-                        filepath.unlink()
-                        deleted_count += 1
+                rows = cursor.fetchall()
 
+                # 파일 삭제
+                for row in rows:
+                    filepath = row['filepath']
+                    if filepath:
+                        filepath_obj = Path(filepath)
+                        if filepath_obj.exists():
+                            filepath_obj.unlink()
+                            deleted_files += 1
+
+                # DB에서 hard delete (같은 timestamp의 모든 모니터)
+                cursor.execute("""
+                    DELETE FROM captures
+                    WHERE datetime(timestamp) = datetime(?)
+                """, (timestamp,))
+
+                deleted_records += cursor.rowcount
+                conn.commit()
                 conn.close()
 
-                # DB에서 soft delete
-                db.mark_capture_deleted(capture_id)
+                print(f"[Delete] capture_id={capture_id}, timestamp={timestamp}: {deleted_files}개 파일, {deleted_records}개 레코드 삭제")
 
             except Exception as e:
                 print(f"[Error] 캡처 삭제 실패 (ID={capture_id}): {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
         return jsonify({
             "success": True,
-            "deleted_count": deleted_count
+            "deleted_files": deleted_files,
+            "deleted_records": deleted_records
         })
     except Exception as e:
+        print(f"[Error] Bulk delete failed: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 

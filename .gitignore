@@ -26,6 +26,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Build artifacts
+*.exe
+
 # Environment variables
 .env
 .env.local

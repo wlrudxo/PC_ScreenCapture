@@ -16,6 +16,7 @@ from PIL import Image
 import numpy as np
 
 from database import Database
+from utils import ensure_config_exists, get_config_path, resolve_data_path
 
 
 def is_screen_locked() -> bool:
@@ -82,25 +83,34 @@ def is_black_screen(img: Image.Image, threshold: float = 10.0) -> bool:
 
 
 class ScreenCapture:
-    def __init__(self, config_path: str = "./config.json"):
+    def __init__(self, config_path: str = None):
         """
         화면 캡처 초기화
 
         Args:
-            config_path: 설정 파일 경로
+            config_path: 설정 파일 경로 (None이면 자동으로 찾음)
         """
+        # 설정 파일 경로 확인 및 생성
+        if config_path is None:
+            ensure_config_exists()
+            config_path = get_config_path()
+
         # 설정 로드
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
 
+        # 경로 해석 (상대 경로 → 절대 경로)
+        db_path = resolve_data_path(self.config['storage']['database_path'])
+        screenshots_path = resolve_data_path(self.config['storage']['screenshots_dir'])
+
         # 데이터베이스 초기화
-        self.db = Database(self.config['storage']['database_path'])
+        self.db = Database(str(db_path))
 
         # 카테고리 초기화
         self.db.init_categories(self.config['categories'])
 
         # 스크린샷 디렉토리
-        self.screenshots_dir = Path(self.config['storage']['screenshots_dir'])
+        self.screenshots_dir = screenshots_path
         self.screenshots_dir.mkdir(parents=True, exist_ok=True)
 
         # 캡처 설정

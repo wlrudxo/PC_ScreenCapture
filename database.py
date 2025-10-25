@@ -33,7 +33,7 @@ class Database:
         return conn
 
     def _create_tables(self):
-        """데이터베이스 테이블 생성"""
+        """데이터베이스 테이블 생성 (v3.0 스키마)"""
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -48,25 +48,43 @@ class Database:
             )
         """)
 
-        # tags 테이블: 활동 태그 정보
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME NOT NULL,
-                category TEXT NOT NULL,
-                activity TEXT NOT NULL,
-                duration_min INTEGER NOT NULL,
-                capture_id INTEGER
-            )
-        """)
-
-        # categories 테이블: 카테고리 정보
+        # categories 테이블: 카테고리 정보 (v3.0)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 color TEXT NOT NULL,
-                activities TEXT NOT NULL
+                order_index INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # activities 테이블: 활동 정보 (v3.0 - 별도 테이블)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                order_index INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
+            )
+        """)
+
+        # tags 테이블: 활동 태그 정보 (v3.0 - ID 기반 참조)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                category_id INTEGER NOT NULL,
+                activity_id INTEGER NOT NULL,
+                duration_min INTEGER NOT NULL,
+                capture_id INTEGER,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT,
+                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE RESTRICT,
+                FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE SET NULL
             )
         """)
 
@@ -75,6 +93,9 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_captures_deleted_at ON captures(deleted_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_timestamp ON tags(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_capture_id ON tags(capture_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_category_id ON tags(category_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_activity_id ON tags(activity_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_activities_category_id ON activities(category_id)")
 
         conn.commit()
         conn.close()

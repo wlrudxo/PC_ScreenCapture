@@ -23,6 +23,9 @@ with open('./config.json', 'r', encoding='utf-8') as f:
 # 데이터베이스 초기화
 db = Database(config['storage']['database_path'])
 
+# 카테고리 초기화 (DB가 비어있을 때만 config.json에서 로드)
+db.init_categories(config['categories'])
+
 # 스크린샷 디렉토리
 screenshots_dir = Path(config['storage']['screenshots_dir'])
 

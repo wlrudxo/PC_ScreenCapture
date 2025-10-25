@@ -671,11 +671,20 @@ async function selectActivity(captureId, categoryId, activityId) {
                 captureItem.style.backgroundColor = '';
             }, 1000);
 
-            // allTags에 새 태그 추가 (다음 렌더링을 위해)
+            // allTags에 새 태그 추가 (다음 렌더링을 위해, v3.0: ID 기반)
+            const category = categories.find(c => c.id === categoryId);
+            const activity = category.activities.find(a => a.id === activityId);
             allTags.push({
                 capture_id: captureId,
-                category: category,
-                activity: activity
+                category: {
+                    id: categoryId,
+                    name: category.name,
+                    color: category.color
+                },
+                activity: {
+                    id: activityId,
+                    name: activity.name
+                }
             });
 
             // 페이지 새로고침 없이 성공 표시만

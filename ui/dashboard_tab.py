@@ -8,6 +8,11 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, QTimer, QDate
 from PyQt6.QtGui import QFont
 
+import matplotlib
+matplotlib.use('QtAgg')  # PyQt6 백엔드 사용
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+
 
 class DashboardTab(QWidget):
     """
@@ -31,9 +36,25 @@ class DashboardTab(QWidget):
         # 날짜 선택
         layout.addWidget(self.create_date_selector())
 
-        # 통계 카드
-        self.stats_layout = self.create_stat_cards()
-        layout.addLayout(self.stats_layout)
+        # 통계 카드와 차트를 가로로 배치
+        stats_and_chart = QHBoxLayout()
+        stats_and_chart.setSpacing(20)
+
+        # 통계 카드 (왼쪽)
+        stats_group = QGroupBox("태그별 사용 시간")
+        self.stats_layout = QVBoxLayout()
+        stats_group.setLayout(self.stats_layout)
+        stats_and_chart.addWidget(stats_group, stretch=2)
+
+        # 파이 차트 (오른쪽)
+        chart_group = QGroupBox("태그별 비율")
+        chart_layout = QVBoxLayout()
+        self.chart_canvas = self.create_pie_chart()
+        chart_layout.addWidget(self.chart_canvas)
+        chart_group.setLayout(chart_layout)
+        stats_and_chart.addWidget(chart_group, stretch=1)
+
+        layout.addLayout(stats_and_chart)
 
         # 프로세스별 TOP 5
         layout.addWidget(self.create_process_table())
@@ -71,15 +92,25 @@ class DashboardTab(QWidget):
         group.setLayout(layout)
         return group
 
-    def create_stat_cards(self):
-        """태그별 통계 카드"""
-        layout = QHBoxLayout()
-        layout.setSpacing(15)
+    def create_pie_chart(self):
+        """파이 차트 위젯 생성"""
+        # Figure 생성 (크기 조정)
+        self.figure = Figure(figsize=(5, 5))
+        self.ax = self.figure.add_subplot(111)
 
-        # 카드 컨테이너 (나중에 동적으로 생성할 예정)
-        self.cards_container = layout
+        # 캔버스 생성
+        canvas = FigureCanvasQTAgg(self.figure)
+        canvas.setMinimumSize(300, 300)
 
-        return layout
+        # 초기 빈 차트
+        self.ax.text(0.5, 0.5, '데이터 없음',
+                    horizontalalignment='center',
+                    verticalalignment='center',
+                    transform=self.ax.transAxes,
+                    fontsize=14)
+        self.ax.axis('off')
+
+        return canvas
 
     def create_process_table(self):
         """프로세스별 TOP 5 테이블"""
@@ -115,6 +146,7 @@ class DashboardTab(QWidget):
             # 태그별 통계
             tag_stats = self.db_manager.get_stats_by_tag(start, end)
             self.update_stat_cards(tag_stats)
+            self.update_pie_chart(tag_stats)
 
             # 프로세스별 통계
             process_stats = self.db_manager.get_stats_by_process(start, end, limit=5)
@@ -126,8 +158,8 @@ class DashboardTab(QWidget):
     def update_stat_cards(self, stats):
         """태그별 통계 카드 업데이트"""
         # 기존 카드 제거
-        while self.cards_container.count():
-            child = self.cards_container.takeAt(0)
+        while self.stats_layout.count():
+            child = self.stats_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
 
@@ -142,9 +174,9 @@ class DashboardTab(QWidget):
                 stat['total_seconds'] or 0,
                 total_seconds
             )
-            self.cards_container.addWidget(card)
+            self.stats_layout.addWidget(card)
 
-        self.cards_container.addStretch()
+        self.stats_layout.addStretch()
 
     def create_stat_card(self, tag_name, tag_color, seconds, total_seconds):
         """개별 통계 카드 생성"""
@@ -187,6 +219,48 @@ class DashboardTab(QWidget):
         card.setLayout(layout)
         return card
 
+    def update_pie_chart(self, stats):
+        """파이 차트 업데이트"""
+        # 차트 초기화
+        self.ax.clear()
+
+        # 데이터가 없으면 빈 메시지
+        if not stats or sum(s['total_seconds'] or 0 for s in stats) == 0:
+            self.ax.text(0.5, 0.5, '데이터 없음',
+                        horizontalalignment='center',
+                        verticalalignment='center',
+                        transform=self.ax.transAxes,
+                        fontsize=14)
+            self.ax.axis('off')
+            self.chart_canvas.draw()
+            return
+
+        # 데이터 준비
+        labels = []
+        sizes = []
+        colors = []
+
+        for stat in stats:
+            seconds = stat['total_seconds'] or 0
+            if seconds > 0:  # 0초 이상만 표시
+                labels.append(stat['tag_name'])
+                sizes.append(seconds)
+                colors.append(stat['tag_color'])
+
+        # 파이 차트 그리기
+        if sizes:
+            # 한글 폰트 설정 (Windows 기본 폰트)
+            import matplotlib.pyplot as plt
+            plt.rcParams['font.family'] = 'Malgun Gothic'  # 맑은 고딕
+            plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
+
+            self.ax.pie(sizes, labels=labels, colors=colors,
+                       autopct='%1.1f%%', startangle=90)
+            self.ax.axis('equal')  # 원형 유지
+
+        # 캔버스 다시 그리기
+        self.chart_canvas.draw()
+
     def update_process_table(self, stats):
         """프로세스별 테이블 업데이트"""
         self.process_table.setRowCount(len(stats))
@@ -210,5 +284,9 @@ class DashboardTab(QWidget):
 
     def __del__(self):
         """소멸자 - 타이머 정리"""
-        if hasattr(self, 'timer'):
-            self.timer.stop()
+        try:
+            if hasattr(self, 'timer') and self.timer is not None:
+                self.timer.stop()
+        except RuntimeError:
+            # 이미 삭제된 Qt 객체인 경우 무시
+            pass

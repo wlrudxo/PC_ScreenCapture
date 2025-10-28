@@ -7,6 +7,7 @@ from PyQt6.QtCore import pyqtSlot
 from backend.database import DatabaseManager
 from backend.rule_engine import RuleEngine
 from backend.monitor_engine import MonitorEngine
+from ui.tray_icon import SystemTrayIcon
 
 
 class MainWindow(QMainWindow):
@@ -42,6 +43,12 @@ class MainWindow(QMainWindow):
         self.monitor_engine.activity_detected.connect(self.on_activity_update)
         self.monitor_engine.start()
 
+        # 시스템 트레이 아이콘
+        self.tray_icon = SystemTrayIcon(self)
+        self.tray_icon.show_window_requested.connect(self.show_window)
+        self.tray_icon.quit_requested.connect(self.quit_application)
+        self.tray_icon.show()
+
         print("[MainWindow] 초기화 완료")
 
     def create_tabs(self):
@@ -68,12 +75,15 @@ class MainWindow(QMainWindow):
         print(f"[MainWindow] 활동 업데이트: {activity_info['process_name']}")
         # 현재 탭이 대시보드면 갱신 (나중에 구현)
 
-    def closeEvent(self, event):
-        """
-        윈도우 닫기 이벤트
-        나중에 시스템 트레이로 최소화할 예정
-        """
-        print("[MainWindow] 종료 중...")
+    def show_window(self):
+        """창 복원 및 표시"""
+        self.show()
+        self.activateWindow()
+        print("[MainWindow] 창 복원")
+
+    def quit_application(self):
+        """애플리케이션 종료"""
+        print("[MainWindow] 종료 요청됨")
 
         # 모니터링 종료
         self.monitor_engine.stop()
@@ -81,4 +91,30 @@ class MainWindow(QMainWindow):
         # DB 연결 종료
         self.db_manager.close()
 
-        event.accept()
+        # 트레이 아이콘 숨김
+        self.tray_icon.hide()
+
+        # 애플리케이션 종료
+        from PyQt6.QtWidgets import QApplication
+        QApplication.quit()
+
+    def closeEvent(self, event):
+        """
+        윈도우 닫기 이벤트
+        트레이로 최소화
+        """
+        print("[MainWindow] 트레이로 최소화")
+
+        # 창 숨김 (종료하지 않음)
+        self.hide()
+
+        # 트레이 알림 (첫 번째만)
+        if not hasattr(self, '_tray_notified'):
+            self.tray_icon.show_message(
+                "활동 추적 시스템 V2",
+                "백그라운드에서 실행 중입니다.\n종료하려면 트레이 아이콘을 우클릭하세요."
+            )
+            self._tray_notified = True
+
+        # 이벤트 무시 (종료하지 않음)
+        event.ignore()

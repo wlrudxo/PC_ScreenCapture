@@ -5,6 +5,7 @@ import sys
 from PyQt6.QtWidgets import QApplication
 
 from ui.main_window import MainWindow
+from ui.styles import apply_dark_theme
 
 
 def main():
@@ -15,6 +16,9 @@ def main():
 
     # Qt 애플리케이션 생성
     app = QApplication(sys.argv)
+
+    # 다크 테마 적용
+    apply_dark_theme(app)
 
     # 메인 윈도우 생성 및 표시
     window = MainWindow()

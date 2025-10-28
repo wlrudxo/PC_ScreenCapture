@@ -9,6 +9,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QBrush
 
+from backend.auto_start import AutoStartManager
+
 
 class SettingsTab(QWidget):
     """
@@ -23,22 +25,61 @@ class SettingsTab(QWidget):
         self.db_manager = db_manager
         self.rule_engine = rule_engine
 
-        # UI 구성
-        layout = QHBoxLayout()
+        # UI 구성 (세로 레이아웃)
+        layout = QVBoxLayout()
         layout.setSpacing(20)
         layout.setContentsMargins(20, 20, 20, 20)
 
+        # 일반 설정
+        layout.addWidget(self.create_general_settings())
+
+        # 태그와 룰 관리 (가로로 배치)
+        managers_layout = QHBoxLayout()
+        managers_layout.setSpacing(20)
+
         # 왼쪽: 태그 관리
-        layout.addWidget(self.create_tag_manager())
+        managers_layout.addWidget(self.create_tag_manager())
 
         # 오른쪽: 룰 관리
-        layout.addWidget(self.create_rule_manager())
+        managers_layout.addWidget(self.create_rule_manager())
+
+        layout.addLayout(managers_layout)
 
         self.setLayout(layout)
 
         # 초기 데이터 로드
         self.load_tags()
         self.load_rules()
+
+    def create_general_settings(self):
+        """일반 설정 UI"""
+        group = QGroupBox("일반 설정")
+        layout = QVBoxLayout()
+
+        # 자동 시작 체크박스
+        self.auto_start_checkbox = QCheckBox("Windows 시작 시 자동 실행")
+        self.auto_start_checkbox.setChecked(AutoStartManager.is_enabled())
+        self.auto_start_checkbox.stateChanged.connect(self.on_auto_start_changed)
+
+        layout.addWidget(self.auto_start_checkbox)
+        layout.addStretch()
+
+        group.setLayout(layout)
+        group.setMaximumHeight(100)  # 높이 제한
+        return group
+
+    def on_auto_start_changed(self, state):
+        """자동 시작 설정 변경"""
+        if state == Qt.CheckState.Checked.value:
+            success = AutoStartManager.enable()
+            if not success:
+                QMessageBox.warning(self, "오류", "자동 시작 설정에 실패했습니다.")
+                self.auto_start_checkbox.setChecked(False)
+        else:
+            success = AutoStartManager.disable()
+            if not success:
+                QMessageBox.warning(self, "오류", "자동 시작 해제에 실패했습니다.")
+                self.auto_start_checkbox.setChecked(True)
 
     def create_tag_manager(self):
         """태그 관리 UI"""

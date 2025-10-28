@@ -103,32 +103,36 @@
 
 ---
 
-## Phase 4: 고급 기능
+## Phase 4: 고급 기능 ✅
 
 ### 4.1 차트
-- [ ] matplotlib 통합
+- [x] matplotlib 통합
   - 파이 차트 (태그별 비율)
   - QWidget에 matplotlib 임베딩
   - 대시보드 탭에 추가
+  - **한글 폰트 설정** (맑은 고딕)
 
 ### 4.2 시스템 트레이
-- [ ] `ui/tray_icon.py` 구현
+- [x] `ui/tray_icon.py` 구현
   - QSystemTrayIcon 생성
   - 컨텍스트 메뉴 (열기/종료)
   - 창 닫기 → 트레이로 최소화
   - 트레이 아이콘 클릭 → 창 복원
+  - **트레이 알림 메시지**
 
 ### 4.3 자동 시작
-- [ ] Windows 시작 프로그램 등록 기능
+- [x] Windows 시작 프로그램 등록 기능
   - 설정 탭에 체크박스
   - winreg로 레지스트리 수정
   - 체크 해제 시 레지스트리 삭제
+  - **backend/auto_start.py 모듈**
 
 ### 4.4 스타일링
-- [ ] `ui/styles.py` - QSS 다크 테마
+- [x] `ui/styles.py` - QSS 다크 테마
   - GitHub 스타일
   - 통일된 색상/폰트
   - 모든 위젯에 적용
+  - **다크 배경 (#1e1e1e), 액센트 컬러 (#007acc)**
 
 ---
 

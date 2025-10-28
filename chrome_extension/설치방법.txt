@@ -1,0 +1,38 @@
+🔧 Chrome Extension 설치 방법
+
+1. Python WebSocket 서버 실행
+   > python test_chrome_websocket.py
+   (포트 8766 사용)
+
+2. Chrome 열기
+   chrome://extensions/ 접속
+
+3. 우측 상단 "개발자 모드" 켜기
+
+4. "압축해제된 확장 프로그램을 로드합니다" 클릭
+
+5. 이 폴더 선택:
+   H:\GitProject\PC_ScreenCapture_V2\chrome_extension
+
+6. 확장 프로그램 설치 완료!
+
+7. 프로필 이름 설정 (중요!)
+   - Chrome 툴바에서 확장 프로그램 아이콘 클릭
+   - 프로필 이름 입력 (예: "업무용", "딴짓용")
+   - "저장" 클릭
+
+8. 다른 Chrome 프로필에도 설치하려면:
+   - 다른 프로필로 Chrome 실행
+   - 위 2~7 단계 반복
+   - 다른 프로필 이름 입력 (예: 첫 번째는 "업무용", 두 번째는 "딴짓용")
+
+9. 테스트:
+   - YouTube, GitHub, 네이버 등 여러 사이트 이동
+   - Python 터미널에서 URL과 프로필명이 실시간으로 출력되는지 확인
+   - 탭 전환해도 감지되는지 확인
+   - 두 프로필을 번갈아 사용하면서 프로필 구분이 되는지 확인
+
+문제 발생 시:
+- F12 개발자 도구 → Console 탭에서 에러 확인
+- chrome://extensions/ → 확장 프로그램 세부정보 → "서비스 워커" 클릭해서 로그 확인
+- 프로필이 "Unknown"으로 표시되면 확장 프로그램 아이콘 클릭해서 이름 설정

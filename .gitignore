@@ -1,0 +1,37 @@
+# 데이터베이스
+activity_tracker.db
+activity_tracker.db-journal
+*.db
+*.db-journal
+
+# 설정 파일
+config.json
+
+# 로그
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# PyInstaller
+*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

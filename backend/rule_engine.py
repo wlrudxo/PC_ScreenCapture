@@ -51,12 +51,18 @@ class RuleEngine:
             (tag_id, rule_id) 튜플
             매칭 실패 시 ('미분류' 태그 ID, None)
         """
+        # 디버깅: 활동 정보 출력
+        if activity_info.get('chrome_url'):
+            print(f"[RuleEngine] 매칭 시도 - URL: {activity_info['chrome_url']}")
+
         # 룰 순회 (우선순위 높은 것부터)
         for rule in self.rules_cache:
             if self._is_matched(rule, activity_info):
+                print(f"[RuleEngine] 매칭 성공 - 룰: {rule['name']}, 태그: {rule.get('tag_name', 'N/A')}")
                 return rule['tag_id'], rule['id']
 
         # 매칭 실패 → "미분류" 태그
+        print(f"[RuleEngine] 매칭 실패 - 미분류로 분류")
         unclassified_tag = self.db_manager.get_tag_by_name('미분류')
         if unclassified_tag:
             return unclassified_tag['id'], None

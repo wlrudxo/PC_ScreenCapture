@@ -134,16 +134,22 @@ class DatabaseManager:
         away_tag_id = cursor.fetchone()
         if away_tag_id:
             away_tag_id = away_tag_id[0]
-            # 화면 잠금 룰
-            cursor.execute("""
-                INSERT OR IGNORE INTO rules (name, priority, process_pattern, tag_id)
-                VALUES ('화면 잠금', 100, '__LOCKED__', ?)
-            """, (away_tag_id,))
-            # Idle 룰
-            cursor.execute("""
-                INSERT OR IGNORE INTO rules (name, priority, process_pattern, tag_id)
-                VALUES ('Idle 상태', 90, '__IDLE__', ?)
-            """, (away_tag_id,))
+
+            # 화면 잠금 룰 (이미 존재하면 무시)
+            cursor.execute("SELECT COUNT(*) FROM rules WHERE name='화면 잠금'")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO rules (name, priority, process_pattern, tag_id)
+                    VALUES ('화면 잠금', 100, '__LOCKED__', ?)
+                """, (away_tag_id,))
+
+            # Idle 룰 (이미 존재하면 무시)
+            cursor.execute("SELECT COUNT(*) FROM rules WHERE name='Idle 상태'")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO rules (name, priority, process_pattern, tag_id)
+                    VALUES ('Idle 상태', 90, '__IDLE__', ?)
+                """, (away_tag_id,))
 
         self.conn.commit()
 

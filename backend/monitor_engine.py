@@ -133,8 +133,13 @@ class MonitorEngine(QThread):
                 'chrome_profile': None,
             }
 
-        # Chrome URL 데이터 가져오기
-        chrome_data = self.chrome_receiver.get_latest_url()
+        # Chrome URL 데이터 가져오기 (Chrome 프로세스일 때만)
+        chrome_data = None
+        process_name_lower = window_info['process_name'].lower()
+        if 'chrome' in process_name_lower or 'msedge' in process_name_lower:
+            chrome_data = self.chrome_receiver.get_latest_url()
+            if chrome_data:
+                print(f"[MonitorEngine] Chrome URL 감지: {chrome_data.get('url', 'N/A')}")
 
         return {
             'process_name': window_info['process_name'],

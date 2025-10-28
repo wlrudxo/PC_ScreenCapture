@@ -442,6 +442,11 @@ class RuleEditDialog(QDialog):
         # 구분선
         layout.addRow(QLabel("<hr>"))
 
+        # 조건 설명
+        condition_info = QLabel("📋 조건 (OR 관계 - 하나라도 일치하면 매칭)")
+        condition_info.setStyleSheet("font-weight: bold; color: #007acc;")
+        layout.addRow("", condition_info)
+
         # 프로세스 패턴
         self.process_edit = QLineEdit()
         if rule_data and rule_data.get('process_pattern'):
@@ -455,6 +460,11 @@ class RuleEditDialog(QDialog):
             self.url_edit.setText(rule_data['url_pattern'])
         self.url_edit.setPlaceholderText("예: *youtube.com*, *github.com*")
         layout.addRow("URL 패턴:", self.url_edit)
+
+        # URL 패턴 힌트
+        url_hint = QLabel("💡 *를 사용하여 부분 매칭 (예: *dcinside* = dcinside가 포함된 모든 URL)")
+        url_hint.setStyleSheet("color: #888; font-size: 9pt;")
+        layout.addRow("", url_hint)
 
         # 창 제목 패턴
         self.title_edit = QLineEdit()

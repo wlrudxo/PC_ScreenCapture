@@ -1,7 +1,7 @@
 """
 메인 윈도우
 """
-from PyQt6.QtWidgets import QMainWindow, QTabWidget
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QMessageBox
 from PyQt6.QtCore import pyqtSlot
 
 from backend.database import DatabaseManager
@@ -12,7 +12,7 @@ from backend.monitor_engine import MonitorEngine
 class MainWindow(QMainWindow):
     """
     메인 윈도우
-    - 탭 구조 (Dashboard, Timeline)
+    - 탭 구조 (Dashboard, Timeline, Settings)
     - 백그라운드 모니터링 시작
     """
 
@@ -24,9 +24,16 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
 
         # 백엔드 초기화
-        self.db_manager = DatabaseManager()
-        self.rule_engine = RuleEngine(self.db_manager)
-        self.monitor_engine = MonitorEngine(self.db_manager, self.rule_engine)
+        try:
+            self.db_manager = DatabaseManager()
+            self.rule_engine = RuleEngine(self.db_manager)
+            self.monitor_engine = MonitorEngine(self.db_manager, self.rule_engine)
+        except Exception as e:
+            QMessageBox.critical(
+                None, "초기화 실패",
+                f"데이터베이스 초기화에 실패했습니다:\n{e}\n\n프로그램을 종료합니다."
+            )
+            raise  # 예외를 다시 발생시켜 main.py에서 처리
 
         # UI 구성
         self.create_tabs()
@@ -39,14 +46,14 @@ class MainWindow(QMainWindow):
 
     def create_tabs(self):
         """탭 위젯 생성"""
-        # Phase 2에서는 일단 간단한 탭만 생성
-        # Dashboard와 Timeline은 별도 파일로 구현 예정
         from ui.dashboard_tab import DashboardTab
         from ui.timeline_tab import TimelineTab
+        from ui.settings_tab import SettingsTab
 
         self.tabs = QTabWidget()
         self.tabs.addTab(DashboardTab(self.db_manager), "📊 대시보드")
         self.tabs.addTab(TimelineTab(self.db_manager, self.monitor_engine), "⏱️ 타임라인")
+        self.tabs.addTab(SettingsTab(self.db_manager, self.rule_engine), "⚙️ 설정")
 
         self.setCentralWidget(self.tabs)
 

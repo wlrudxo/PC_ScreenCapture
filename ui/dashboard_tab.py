@@ -28,6 +28,11 @@ class DashboardTab(QWidget):
         self.db_manager = db_manager
         self.selected_date = datetime.now().date()
 
+        # matplotlib 한글 폰트 설정 (한 번만)
+        import matplotlib.pyplot as plt
+        plt.rcParams['font.family'] = 'Malgun Gothic'
+        plt.rcParams['axes.unicode_minus'] = False
+
         # UI 구성
         layout = QVBoxLayout()
         layout.setSpacing(20)
@@ -249,11 +254,6 @@ class DashboardTab(QWidget):
 
         # 파이 차트 그리기
         if sizes:
-            # 한글 폰트 설정 (Windows 기본 폰트)
-            import matplotlib.pyplot as plt
-            plt.rcParams['font.family'] = 'Malgun Gothic'  # 맑은 고딕
-            plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
-
             self.ax.pie(sizes, labels=labels, colors=colors,
                        autopct='%1.1f%%', startangle=90)
             self.ax.axis('equal')  # 원형 유지
@@ -282,11 +282,16 @@ class DashboardTab(QWidget):
         # 열 너비 자동 조정
         self.process_table.resizeColumnsToContents()
 
-    def __del__(self):
-        """소멸자 - 타이머 정리"""
-        try:
-            if hasattr(self, 'timer') and self.timer is not None:
-                self.timer.stop()
-        except RuntimeError:
-            # 이미 삭제된 Qt 객체인 경우 무시
-            pass
+    def closeEvent(self, event):
+        """위젯 닫기 전 리소스 정리"""
+        # 타이머 정지
+        if hasattr(self, 'timer'):
+            self.timer.stop()
+
+        # matplotlib 리소스 정리
+        if hasattr(self, 'figure'):
+            import matplotlib.pyplot as plt
+            self.figure.clear()
+            plt.close(self.figure)
+
+        super().closeEvent(event)

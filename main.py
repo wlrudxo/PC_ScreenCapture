@@ -21,8 +21,14 @@ def main():
     apply_dark_theme(app)
 
     # 메인 윈도우 생성 및 표시
-    window = MainWindow()
-    window.show()
+    try:
+        window = MainWindow()
+        window.show()
+    except Exception as e:
+        print(f"[main] 초기화 실패: {e}")
+        # QMessageBox는 MainWindow 생성 전에 이미 표시됨
+        # 여기서는 종료만 처리
+        sys.exit(1)
 
     # 이벤트 루프 실행
     sys.exit(app.exec())

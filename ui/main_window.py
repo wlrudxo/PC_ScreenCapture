@@ -101,20 +101,29 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """
         윈도우 닫기 이벤트
-        트레이로 최소화
+        - Shift 키를 누른 채로 닫으면 완전 종료
+        - 그냥 닫으면 트레이로 최소화
         """
-        print("[MainWindow] 트레이로 최소화")
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QApplication
 
-        # 창 숨김 (종료하지 않음)
-        self.hide()
+        # Shift 키를 누른 상태면 완전 종료
+        if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
+            print("[MainWindow] Shift+Close 감지 - 완전 종료")
+            self.quit_application()
+            event.accept()
+        else:
+            # 트레이로 최소화
+            print("[MainWindow] 트레이로 최소화")
+            self.hide()
 
-        # 트레이 알림 (첫 번째만)
-        if not hasattr(self, '_tray_notified'):
-            self.tray_icon.show_message(
-                "활동 추적 시스템 V2",
-                "백그라운드에서 실행 중입니다.\n종료하려면 트레이 아이콘을 우클릭하세요."
-            )
-            self._tray_notified = True
+            # 트레이 알림 (첫 번째만)
+            if not hasattr(self, '_tray_notified'):
+                self.tray_icon.show_message(
+                    "활동 추적 시스템 V2",
+                    "백그라운드에서 실행 중입니다.\nShift를 누른 채로 닫으면 완전히 종료됩니다."
+                )
+                self._tray_notified = True
 
-        # 이벤트 무시 (종료하지 않음)
-        event.ignore()
+            # 이벤트 무시 (종료하지 않음)
+            event.ignore()

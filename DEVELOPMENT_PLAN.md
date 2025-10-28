@@ -48,28 +48,34 @@
 
 ---
 
-## Phase 2: 프론트엔드 기본
+## Phase 2: 프론트엔드 기본 ✅
 
 ### 2.1 메인 윈도우
-- [ ] `ui/main_window.py` 구현
+- [x] `ui/main_window.py` 구현
   - QMainWindow 생성
   - QTabWidget으로 탭 구조
   - MonitorEngine 시작
   - 시그널 연결 (`activity_detected`)
+- [x] `main.py` 진입점 구현
 
 ### 2.2 대시보드 탭
-- [ ] `ui/dashboard_tab.py` 구현
+- [x] `ui/dashboard_tab.py` 구현
   - 날짜 선택 위젯
   - 태그별 통계 카드 (사용 시간 + 진행률 바)
   - 프로세스별 TOP 5 테이블
   - 10초마다 자동 갱신 (QTimer)
+  - **QTimer 리소스 정리 (__del__ 메서드)**
+  - **DB 예외 처리 추가**
 
 ### 2.3 타임라인 탭
-- [ ] `ui/timeline_tab.py` 구현
+- [x] `ui/timeline_tab.py` 구현
   - 날짜/태그 필터
   - QTableWidget으로 활동 목록 표시
   - 컬럼: 시작/종료 시간, 프로세스, 제목/URL, 태그, 시간
-  - 수동 태그 변경 기능 (더블클릭 → 콤보박스)
+  - **실시간 업데이트 (monitor_engine 연결)**
+  - **태그 색상 배경 적용**
+  - **DB 예외 처리 추가**
+  - 수동 태그 변경 기능 (Phase 3로 이연)
 
 ---
 

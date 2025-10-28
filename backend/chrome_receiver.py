@@ -96,9 +96,21 @@ class ChromeURLReceiver:
 
     def stop(self):
         """WebSocket 서버 종료"""
+        import time
         print("[ChromeURLReceiver] 종료 요청됨")
-        if self.server:
-            self.server.close()
-        if self.loop:
+
+        if self.loop and self.loop.is_running():
+            # 서버 종료
+            if self.server:
+                self.server.close()
+
+            # 이벤트 루프 종료
             self.loop.call_soon_threadsafe(self.loop.stop)
+
+            # 이벤트 루프가 종료될 때까지 대기 (최대 2초)
+            for _ in range(20):
+                if not self.loop.is_running():
+                    break
+                time.sleep(0.1)
+
         print("[ChromeURLReceiver] WebSocket 서버 종료됨")

@@ -136,17 +136,27 @@
 
 ---
 
-## Phase 5: Chrome Extension
+## Phase 5: Chrome Extension ✅
 
 ### 5.1 확장 프로그램
-- [ ] `chrome_extension/manifest.json` 작성
-  - permissions: `tabs`, `activeTab`
-- [ ] `chrome_extension/background.js` 구현
+- [x] `chrome_extension/manifest.json` 작성
+  - permissions: `tabs`, `webNavigation`, `storage`
+  - **Manifest V3 사용**
+  - host_permissions: `<all_urls>`
+- [x] `chrome_extension/background.js` 구현
   - WebSocket 연결 (`ws://localhost:8766`)
-  - 활성 탭 변경 감지
-  - URL + 프로필명 전송
-- [ ] `chrome_extension/popup.html` - 간단한 상태 표시
-- [ ] Chrome에 로드 및 테스트
+  - 활성 탭 변경 감지 (onActivated, onUpdated, onFocusChanged)
+  - URL + 프로필명 + 제목 + 타임스탬프 전송
+  - **자동 재연결 로직** (5초 간격)
+  - **프로필 이름 저장/로드** (chrome.storage)
+- [x] `chrome_extension/popup.html/js` - 프로필 설정 UI
+  - 프로필 이름 입력
+  - 상태 표시 (연결됨/미설정)
+  - 저장 버튼 + Enter 키 지원
+- [x] 설치 가이드 작성 (`설치방법.txt`)
+  - 개발자 모드 로드 방법
+  - 다중 프로필 설정 방법
+  - 테스트 가이드
 
 ---
 
@@ -199,9 +209,11 @@
 - Windows 시작 프로그램 등록/해제
 
 ### ✅ Phase 5 완료 조건
-- Chrome Extension 설치
-- WebSocket 연결 확인
+- Chrome Extension 설치 (개발자 모드)
+- WebSocket 연결 확인 (ws://localhost:8766)
 - Chrome URL이 DB에 저장 확인
+- **프로필 이름 설정 및 구분**
+- **탭 전환/업데이트 실시간 감지**
 
 ### ✅ Phase 6 완료 조건
 - `.exe` 파일 정상 실행

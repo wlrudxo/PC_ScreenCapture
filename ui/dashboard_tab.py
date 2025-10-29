@@ -93,10 +93,16 @@ class DashboardTab(QWidget):
         today_btn = QPushButton("오늘")
         today_btn.clicked.connect(self.goto_today)
 
+        # 총 활동 시간 레이블
+        self.total_time_label = QLabel("총 활동 시간: 0시간 0분")
+        self.total_time_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.total_time_label.setStyleSheet("color: #4CAF50;")
+
         layout.addWidget(QLabel("날짜:"))
         layout.addWidget(self.date_edit)
         layout.addWidget(today_btn)
         layout.addStretch()
+        layout.addWidget(self.total_time_label)
 
         group.setLayout(layout)
         return group
@@ -156,6 +162,10 @@ class DashboardTab(QWidget):
             tag_stats = self.db_manager.get_stats_by_tag(start, end)
             self.update_stat_cards(tag_stats)
             self.update_pie_chart(tag_stats)
+
+            # 총 활동 시간 업데이트 (자리비움 제외)
+            total_seconds = sum(s['total_seconds'] or 0 for s in tag_stats if s['tag_name'] != '자리비움')
+            self.update_total_time(total_seconds)
 
             # 프로세스별 통계
             process_stats = self.db_manager.get_stats_by_process(start, end, limit=5)
@@ -277,6 +287,12 @@ class DashboardTab(QWidget):
 
         # 캔버스 다시 그리기
         self.chart_canvas.draw()
+
+    def update_total_time(self, total_seconds):
+        """총 활동 시간 레이블 업데이트"""
+        hours = int(total_seconds // 3600)
+        minutes = int((total_seconds % 3600) // 60)
+        self.total_time_label.setText(f"총 활동 시간: {hours}시간 {minutes}분")
 
     def update_process_table(self, stats):
         """프로세스별 테이블 업데이트"""

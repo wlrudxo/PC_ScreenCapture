@@ -40,6 +40,10 @@ QTabBar::tab:hover {
     background-color: #3c3c3c;
 }
 
+QTabBar::tab:selected:hover {
+    background-color: #252526;
+}
+
 /* 그룹 박스 */
 QGroupBox {
     border: 1px solid #3c3c3c;

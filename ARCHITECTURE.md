@@ -1,7 +1,14 @@
-# 활동 추적 시스템 V2 - 아키텍처 설계
+# 활동 추적 시스템 V2 - 아키텍처
 
-## 📋 목표
-연구실에서 업무 vs 딴짓 비율을 추적하는 개인용 데스크톱 애플리케이션
+## 📋 개요
+PC 활동(활성 창, Chrome URL, 화면 잠금 등)을 실시간 추적하여 태그별로 자동 분류하고 통계를 시각화하는 개인용 데스크톱 애플리케이션
+
+**핵심 기능:**
+- 2초 간격 실시간 활동 모니터링
+- Chrome URL 추적 (WebSocket 기반 확장 프로그램)
+- 우선순위 기반 자동 태그 분류
+- 대시보드/타임라인 UI
+- 시스템 트레이 백그라운드 실행
 
 ---
 
@@ -15,36 +22,39 @@
 │  │   Tab    │   Tab    │   Tab    │  Icon    │ │
 │  └──────────┴──────────┴──────────┴──────────┘ │
 └─────────────────┬───────────────────────────────┘
-                  │
+                  │ (Qt Signals)
 ┌─────────────────▼───────────────────────────────┐
 │              Backend Core                        │
 │  ┌────────────────────────────────────────────┐ │
-│  │  MonitorEngine (Thread)                    │ │
-│  │  - WindowTracker                           │ │
-│  │  - ScreenLockDetector                      │ │
-│  │  - ChromeURLReceiver (WebSocket)           │ │
+│  │  MonitorEngine (QThread)                   │ │
+│  │  - WindowTracker (ctypes + psutil)         │ │
+│  │  - ScreenDetector (lock/idle 감지)         │ │
+│  │  - ChromeURLReceiver (WebSocket 서버)      │ │
 │  └────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────┐ │
 │  │  RuleEngine                                │ │
-│  │  - 프로그램/URL → 태그 매칭                 │ │
+│  │  - 우선순위 기반 룰 매칭                    │ │
+│  │  - 와일드카드 패턴 지원                     │ │
 │  └────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────┐ │
-│  │  DatabaseManager                           │ │
-│  │  - SQLite 저장/조회                         │ │
+│  │  DatabaseManager (Thread-safe)             │ │
+│  │  - SQLite WAL 모드                         │ │
+│  │  - threading.local 연결 관리                │ │
 │  └────────────────────────────────────────────┘ │
 └─────────────────┬───────────────────────────────┘
                   │
 ┌─────────────────▼───────────────────────────────┐
 │              SQLite Database                     │
-│  - tags                                          │
-│  - activities                                    │
-│  - rules                                         │
+│  - tags (태그 정의)                              │
+│  - activities (활동 기록)                        │
+│  - rules (분류 룰)                               │
 └──────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────┐
-│          Chrome Extension                        │
-│  - 활성 탭 URL 전송 (WebSocket)                  │
-│  - 프로필명 포함                                  │
+│      Chrome Extension (Manifest V3)              │
+│  - WebSocket 클라이언트 (ws://localhost:8766)    │
+│  - 활성 탭 URL/프로필 전송                       │
+│  - 자동 재연결 로직                               │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -52,46 +62,39 @@
 
 ## 🗄️ 데이터베이스 스키마
 
-### 1. `tags` - 태그 정의 테이블
+### 1. `tags` - 태그 정의
 ```sql
 CREATE TABLE tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,        -- 태그 이름 (예: "업무", "딴짓", "자리비움")
-    color TEXT NOT NULL,               -- UI 표시 색상 (예: "#4CAF50")
+    name TEXT NOT NULL UNIQUE,
+    color TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- 기본 태그
-INSERT INTO tags (name, color) VALUES
-    ('업무', '#4CAF50'),
-    ('딴짓', '#FF5722'),
-    ('자리비움', '#9E9E9E'),
-    ('미분류', '#607D8B');
 ```
 
-**특징:**
-- ID 기반 참조 → 태그 이름 변경 시 activities 테이블은 영향 없음
-- 사용자가 자유롭게 태그 추가/삭제/이름변경 가능
+**기본 태그:** 업무(#4CAF50), 딴짓(#FF5722), 자리비움(#9E9E9E), 미분류(#607D8B)
+
+**설계 특징:**
+- ID 기반 참조로 이름 변경 시에도 기존 활동 기록 유지
+- UI에서 자유롭게 CRUD 가능
 
 ---
 
-### 2. `activities` - 활동 기록 테이블
+### 2. `activities` - 활동 기록
 ```sql
 CREATE TABLE activities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP,                -- NULL이면 현재 진행 중
+    end_time TIMESTAMP,                -- NULL = 진행 중
 
-    -- 활동 정보
-    process_name TEXT,                 -- 예: "chrome.exe", "__LOCKED__", "__IDLE__"
-    window_title TEXT,                 -- 예: "YouTube - Chrome"
-    chrome_profile TEXT,               -- 예: "업무용", "딴짓용"
-    chrome_url TEXT,                   -- 예: "https://youtube.com/watch?v=..."
+    process_name TEXT,                 -- "chrome.exe", "__LOCKED__", "__IDLE__"
+    window_title TEXT,
+    chrome_url TEXT,
+    chrome_profile TEXT,
 
-    -- 분류
-    tag_id INTEGER,                    -- tags 테이블 외래키
-    rule_id INTEGER,                   -- 어떤 룰에 의해 분류됐는지
+    tag_id INTEGER,                    -- FK: tags(id)
+    rule_id INTEGER,                   -- FK: rules(id)
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -99,99 +102,102 @@ CREATE TABLE activities (
     FOREIGN KEY (rule_id) REFERENCES rules(id) ON DELETE SET NULL
 );
 
--- 인덱스 (성능 최적화)
 CREATE INDEX idx_activities_time ON activities(start_time, end_time);
 CREATE INDEX idx_activities_tag ON activities(tag_id);
 CREATE INDEX idx_activities_process ON activities(process_name);
 ```
 
-**특징:**
-- `start_time` ~ `end_time` 구간으로 활동 시간 계산
-- Chrome URL과 프로필 정보 저장
-- 화면 잠금/idle은 `process_name`을 `__LOCKED__` / `__IDLE__`로 저장하여 룰 엔진에서 통일된 방식으로 처리
-- tag_id로 태그 참조 (태그 이름 변경해도 기록 유지)
+**설계 특징:**
+- `start_time ~ end_time` 구간 저장으로 정확한 시간 계산
+- 특수 상태는 `process_name`으로 구분: `__LOCKED__`, `__IDLE__`
+- Chrome 프로필/URL 별도 저장으로 세밀한 분류 가능
 
 ---
 
-### 3. `rules` - 자동 분류 룰 테이블
+### 3. `rules` - 자동 분류 룰
 ```sql
 CREATE TABLE rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,                -- 룰 이름 (예: "YouTube는 딴짓")
-    priority INTEGER DEFAULT 0,        -- 우선순위 (높을수록 먼저 적용)
-    enabled BOOLEAN DEFAULT 1,         -- 활성화 여부
+    name TEXT NOT NULL,
+    priority INTEGER DEFAULT 0,        -- 높을수록 우선 적용
+    enabled BOOLEAN DEFAULT 1,
 
-    -- 매칭 조건 (OR 관계)
-    process_pattern TEXT,              -- 프로세스 매칭 (예: "chrome.exe")
-    url_pattern TEXT,                  -- URL 매칭 (예: "*youtube.com*")
-    window_title_pattern TEXT,         -- 창 제목 매칭 (예: "*YouTube*")
-    chrome_profile TEXT,               -- Chrome 프로필 (예: "딴짓용")
+    -- 매칭 조건 (OR 관계, 쉼표로 다중 패턴 가능)
+    process_pattern TEXT,              -- "chrome.exe,firefox.exe"
+    url_pattern TEXT,                  -- "*youtube.com*,*netflix.com*"
+    window_title_pattern TEXT,
+    chrome_profile TEXT,
 
-    -- 분류 결과
-    tag_id INTEGER NOT NULL,           -- 적용할 태그
+    tag_id INTEGER NOT NULL,           -- FK: tags(id)
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
-
--- 기본 룰 예시
-INSERT INTO rules (name, priority, process_pattern, tag_id) VALUES
-    ('화면 잠금', 100, '__LOCKED__', (SELECT id FROM tags WHERE name='자리비움')),
-    ('Idle 상태', 90, '__IDLE__', (SELECT id FROM tags WHERE name='자리비움'));
-
-INSERT INTO rules (name, priority, url_pattern, tag_id) VALUES
-    ('YouTube는 딴짓', 50, '*youtube.com*', (SELECT id FROM tags WHERE name='딴짓')),
-    ('GitHub는 업무', 50, '*github.com*', (SELECT id FROM tags WHERE name='업무'));
-
-INSERT INTO rules (name, priority, chrome_profile, tag_id) VALUES
-    ('업무용 Chrome', 30, '업무용', (SELECT id FROM tags WHERE name='업무')),
-    ('딴짓용 Chrome', 30, '딴짓용', (SELECT id FROM tags WHERE name='딴짓'));
 ```
 
-**특징:**
-- 우선순위(priority) 기반 적용 (높은 것 먼저)
-- 여러 조건 중 하나라도 매치되면 적용
-- 와일드카드 패턴 지원 (`*youtube.com*`)
-- 사용자가 UI에서 자유롭게 추가/수정/삭제
+**기본 룰:**
+- Priority 100: `__LOCKED__` → 자리비움
+- Priority 90: `__IDLE__` → 자리비움
+
+**설계 특징:**
+- 우선순위 기반 순차 매칭 (높은 것부터)
+- 와일드카드 패턴 지원 (`*`, `?`)
+- 쉼표로 여러 패턴 한 번에 지정 가능
+- 조건 필드 중 하나라도 매치되면 적용 (OR)
 
 ---
 
-## 🔧 백엔드 모듈 구조
+## 📁 디렉토리 구조
 
-### 📁 파일 구조
 ```
 PC_ScreenCapture_V2/
-├── main.py                      # 메인 진입점
-├── backend/
-│   ├── __init__.py
-│   ├── config.py                # 설정 및 경로 관리 ⭐
-│   ├── monitor_engine.py        # 모니터링 엔진 (스레드)
-│   ├── window_tracker.py        # 활성 창 감지
-│   ├── screen_detector.py       # 화면 잠금/idle 감지
-│   ├── chrome_receiver.py       # Chrome WebSocket 서버
+├── main.py                      # 애플리케이션 진입점
+├── requirements.txt
+│
+├── backend/                     # 백엔드 모듈
+│   ├── config.py                # 경로/설정 관리 (dev vs build 모드)
+│   ├── database.py              # SQLite 매니저 (thread-safe)
+│   ├── monitor_engine.py        # 모니터링 루프 (QThread)
+│   ├── window_tracker.py        # 활성 창 감지 (ctypes)
+│   ├── screen_detector.py       # 잠금/idle 감지
+│   ├── chrome_receiver.py       # WebSocket 서버 (asyncio)
 │   ├── rule_engine.py           # 룰 매칭 엔진
-│   └── database.py              # DB 매니저
-├── ui/
-│   ├── __init__.py
-│   ├── main_window.py           # 메인 윈도우
-│   ├── dashboard_tab.py         # 대시보드 탭
-│   ├── timeline_tab.py          # 타임라인 탭
-│   ├── settings_tab.py          # 설정 탭
+│   └── auto_start.py            # Windows 자동 시작 관리
+│
+├── ui/                          # PyQt6 UI
+│   ├── main_window.py           # 메인 윈도우 + 탭 구조
+│   ├── dashboard_tab.py         # 통계 대시보드
+│   ├── timeline_tab.py          # 활동 타임라인
+│   ├── settings_tab.py          # 설정 (태그/룰 관리)
 │   ├── tray_icon.py             # 시스템 트레이
-│   └── styles.py                # QSS 스타일
-├── chrome_extension/            # Chrome 확장
+│   └── styles.py                # 다크 테마 QSS
+│
+├── chrome_extension/            # Chrome 확장 (Manifest V3)
 │   ├── manifest.json
-│   ├── background.js
-│   ├── popup.html
-│   └── popup.js
-└── activity_tracker.db          # SQLite DB
+│   ├── background.js            # Service Worker
+│   ├── popup.html/js            # 설정 팝업
+│   └── 설치방법.txt
+│
+├── reference/                   # 테스트/참고 파일
+│   ├── test_active_window.py
+│   ├── test_screen_lock.py
+│   ├── test_chrome_websocket.py
+│   └── demo_pyqt6_ui.py
+│
+├── activity_tracker.db          # SQLite 데이터베이스 (런타임 생성)
+├── activity_tracker.db-shm      # WAL 공유 메모리
+└── activity_tracker.db-wal      # WAL 로그
 ```
 
 ---
 
-### 0️⃣ `backend/config.py` - 설정 및 경로 관리
+## 🔧 백엔드 모듈
+
+---
+
+### `backend/config.py` - 설정 및 경로 관리
 ```python
 import os
 import sys
@@ -261,55 +267,71 @@ class AppConfig:
         return AppConfig.get_log_dir() / "app.log"
 ```
 
-**특징:**
-- `sys.frozen` 체크로 개발/빌드 모드 자동 구분
-- 개발 중: 프로젝트 폴더에 저장 → 디버깅 편함
-- 빌드 후: AppData 사용 → Windows 표준, 권한 문제 없음
-- 경로 변경 시 한 곳만 수정하면 전체 반영
-
-**사용 예시:**
-```python
-from backend.config import AppConfig
-
-# DB 경로 자동 설정
-db_manager = DatabaseManager(db_path=AppConfig.get_db_path())
-
-# 현재 모드 확인
-if AppConfig.is_dev_mode():
-    print("개발 모드로 실행 중")
-```
+**핵심 기능:**
+- 개발 모드: 프로젝트 폴더에 DB/설정 저장
+- 빌드 모드: `%APPDATA%/ActivityTracker`에 저장
+- `sys.frozen` 자동 감지로 모드 구분
 
 ---
 
-### 1️⃣ `backend/monitor_engine.py` - 모니터링 엔진
+### `backend/database.py` - 데이터베이스 매니저
+```python
+class DatabaseManager:
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = AppConfig.get_db_path()
+
+        # Thread-safe: threading.local 사용
+        self.local = threading.local()
+        self.db_path = db_path
+        self.init_database()
+
+    def _get_connection(self):
+        """스레드별로 독립적인 연결 반환"""
+        if not hasattr(self.local, 'conn'):
+            self.local.conn = sqlite3.connect(
+                self.db_path,
+                check_same_thread=False
+            )
+            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self.local.conn.row_factory = sqlite3.Row
+        return self.local.conn
+```
+
+**주요 메서드:**
+- **태그**: `get_all_tags()`, `create_tag()`, `update_tag()`, `delete_tag()`
+- **활동**: `create_activity()`, `end_activity()`, `get_activities()`
+- **룰**: `get_all_rules()`, `create_rule()`, `update_rule()`, `delete_rule()`
+- **통계**: `get_stats_by_tag()`, `get_stats_by_process()`, `get_timeline()`
+
+**설계 특징:**
+- `threading.local`로 스레드별 연결 분리
+- WAL 모드로 동시 읽기 성능 향상
+- `sqlite3.Row`로 딕셔너리 스타일 접근
+
+---
+
+### `backend/monitor_engine.py` - 모니터링 엔진
 ```python
 class MonitorEngine(QThread):
-    """
-    백그라운드 스레드로 실행
-    - 활성 창 감지
-    - 화면 잠금/idle 감지
-    - Chrome URL 수신
-    - 룰 엔진으로 분류 → DB 저장
-    """
-
-    activity_detected = pyqtSignal(dict)  # UI 업데이트용 시그널
+    activity_detected = pyqtSignal(dict)
 
     def __init__(self, db_manager, rule_engine):
+        super().__init__()
         self.window_tracker = WindowTracker()
         self.screen_detector = ScreenDetector()
         self.chrome_receiver = ChromeURLReceiver(port=8766)
         self.db_manager = db_manager
         self.rule_engine = rule_engine
-
+        self.running = False
         self.current_activity = None
-        self.last_check_time = None
 
     def run(self):
-        """2초마다 현재 활동 체크"""
+        """2초 간격 모니터링 루프"""
+        self.running = True
         while self.running:
             activity_info = self.collect_activity_info()
 
-            # 활동이 변경되었으면 이전 활동 종료 + 새 활동 시작
             if self.is_activity_changed(activity_info):
                 self.end_current_activity()
                 self.start_new_activity(activity_info)
@@ -317,32 +339,16 @@ class MonitorEngine(QThread):
             time.sleep(2)
 
     def collect_activity_info(self):
-        """
-        현재 활동 정보 수집
-        중요: 화면 잠금/idle 상태를 먼저 판단하여 process_name으로 설정
-        """
-        # 1. 최우선: 화면 잠금 상태
+        """현재 활동 정보 수집 (우선순위: 잠금 > idle > 일반)"""
         if self.screen_detector.is_locked():
-            return {
-                'process_name': '__LOCKED__',
-                'window_title': 'Screen Locked',
-                'chrome_url': None,
-                'chrome_profile': None,
-            }
+            return {'process_name': '__LOCKED__', ...}
 
-        # 2. 유휴(idle) 상태 체크 (5분 임계값)
         idle_seconds = self.screen_detector.get_idle_duration()
-        if idle_seconds > 300:
-            return {
-                'process_name': '__IDLE__',
-                'window_title': f'Idle ({idle_seconds}s)',
-                'chrome_url': None,
-                'chrome_profile': None,
-            }
+        if idle_seconds > 300:  # 5분
+            return {'process_name': '__IDLE__', ...}
 
-        # 3. 일반 활동
         window_info = self.window_tracker.get_active_window()
-        chrome_data = self.chrome_receiver.get_latest_url()  # {'url': ..., 'profile': ...}
+        chrome_data = self.chrome_receiver.get_latest_url()
 
         return {
             'process_name': window_info['process_name'],
@@ -352,256 +358,292 @@ class MonitorEngine(QThread):
         }
 
     def start_new_activity(self, info):
-        """새 활동 시작 → DB 저장"""
         tag_id, rule_id = self.rule_engine.match(info)
-
         self.current_activity = self.db_manager.create_activity(
-            process_name=info['process_name'],
-            window_title=info['window_title'],
-            chrome_url=info['chrome_url'],
-            chrome_profile=info['chrome_profile'],
+            start_time=datetime.now(),
+            **info,
             tag_id=tag_id,
             rule_id=rule_id
         )
-
-        self.activity_detected.emit(info)  # UI 업데이트
+        self.activity_detected.emit(info)
 ```
+
+**핵심 로직:**
+- QThread로 메인 UI와 독립 실행
+- 우선순위: 화면 잠금 > Idle > 일반 활동
+- 활동 변경 감지 시 이전 활동 종료 + 새 활동 시작
+- Qt Signal로 UI 업데이트 전달
 
 ---
 
-### 2️⃣ `backend/rule_engine.py` - 룰 매칭 엔진
+### `backend/window_tracker.py` - 활성 창 추적
+```python
+class WindowTracker:
+    def get_active_window(self):
+        """Windows API로 활성 창 정보 수집"""
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+
+        # 창 제목
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        buff = ctypes.create_unicode_buffer(length + 1)
+        ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+        window_title = buff.value
+
+        # 프로세스 정보
+        pid = ctypes.c_ulong()
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+
+        try:
+            process = psutil.Process(pid.value)
+            process_name = process.name()
+            process_path = process.exe()
+
+            # Chrome 프로필 추출
+            chrome_profile = self._extract_chrome_profile(process.cmdline())
+        except:
+            process_name = "Unknown"
+            process_path = None
+            chrome_profile = None
+
+        return {
+            'window_title': window_title,
+            'process_name': process_name,
+            'process_path': process_path,
+            'pid': pid.value,
+            'chrome_profile': chrome_profile
+        }
+
+    def _extract_chrome_profile(self, cmdline):
+        """Chrome 프로세스 커맨드라인에서 프로필명 추출"""
+        for arg in cmdline:
+            if '--profile-directory=' in arg:
+                return arg.split('=')[1]
+        return None
+```
+
+**기술 스택:**
+- `ctypes.windll.user32`: Windows API 호출
+- `psutil`: 프로세스 정보 수집
+- Chrome 프로필은 `--profile-directory` 플래그에서 추출
+
+---
+
+### `backend/screen_detector.py` - 화면 상태 감지
+```python
+class ScreenDetector:
+    def is_locked(self):
+        """화면 잠금 상태 체크"""
+        hDesk = ctypes.windll.user32.OpenInputDesktop(0, False, 0)
+        return hDesk == 0  # 0이면 잠금 상태
+
+    def get_idle_duration(self):
+        """키보드/마우스 입력 없는 시간 (초)"""
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [
+                ('cbSize', ctypes.c_uint),
+                ('dwTime', ctypes.c_uint),
+            ]
+
+        lii = LASTINPUTINFO()
+        lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+        ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii))
+
+        millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+        return millis / 1000.0
+```
+
+**핵심 API:**
+- `OpenInputDesktop`: 화면 잠금 감지
+- `GetLastInputInfo`: 마지막 입력 시각 조회
+
+---
+
+### `backend/rule_engine.py` - 룰 매칭 엔진
 ```python
 class RuleEngine:
-    """
-    활동 정보 → 태그 자동 분류
-    """
-
     def __init__(self, db_manager):
         self.db_manager = db_manager
         self.rules_cache = []
         self.reload_rules()
 
     def reload_rules(self):
-        """DB에서 룰 불러오기 (우선순위 정렬)"""
+        """DB에서 활성화된 룰 로드 (우선순위 DESC)"""
         self.rules_cache = self.db_manager.get_all_rules(
             enabled_only=True,
             order_by='priority DESC'
         )
 
     def match(self, activity_info):
-        """
-        활동 정보와 룰을 매칭해서 tag_id, rule_id 반환
-
-        단순화된 로직:
-        - 모든 상태(__LOCKED__, __IDLE__ 포함)를 통일된 방식으로 처리
-        - priority 높은 룰부터 순회하며 첫 매칭 반환
-        """
-
-        # 룰 순회 (우선순위 높은 것부터)
+        """활동 정보를 룰과 매칭하여 (tag_id, rule_id) 반환"""
         for rule in self.rules_cache:
-            if self.is_matched(rule, activity_info):
+            if self._is_matched(rule, activity_info):
                 return rule['tag_id'], rule['id']
 
-        # 매칭 실패 → "미분류" 태그
-        unclassified_tag_id = self.db_manager.get_tag_by_name('미분류')['id']
-        return unclassified_tag_id, None
+        # 매칭 실패 → 미분류
+        unclassified = self.db_manager.get_tag_by_name('미분류')
+        return unclassified['id'], None
 
-    def is_matched(self, rule, activity_info):
-        """룰 조건과 활동 정보 매칭 (OR 관계)"""
-
-        # URL 패턴 매칭
-        if rule['url_pattern']:
-            if fnmatch(activity_info['chrome_url'], rule['url_pattern']):
+    def _is_matched(self, rule, info):
+        """룰의 조건 중 하나라도 매치되면 True (OR 관계)"""
+        # URL 패턴 (쉼표로 다중 패턴 지원)
+        if rule['url_pattern'] and info.get('chrome_url'):
+            patterns = [p.strip() for p in rule['url_pattern'].split(',')]
+            if any(fnmatch.fnmatch(info['chrome_url'], p) for p in patterns):
                 return True
 
-        # Chrome 프로필 매칭
-        if rule['chrome_profile']:
-            if activity_info['chrome_profile'] == rule['chrome_profile']:
+        # Chrome 프로필
+        if rule['chrome_profile'] and info.get('chrome_profile'):
+            if rule['chrome_profile'] == info['chrome_profile']:
                 return True
 
-        # 프로세스 이름 매칭
-        if rule['process_pattern']:
-            if fnmatch(activity_info['process_name'], rule['process_pattern']):
+        # 프로세스 패턴
+        if rule['process_pattern'] and info.get('process_name'):
+            patterns = [p.strip() for p in rule['process_pattern'].split(',')]
+            if any(fnmatch.fnmatch(info['process_name'], p) for p in patterns):
                 return True
 
-        # 창 제목 매칭
-        if rule['window_title_pattern']:
-            if fnmatch(activity_info['window_title'], rule['window_title_pattern']):
+        # 창 제목 패턴
+        if rule['window_title_pattern'] and info.get('window_title'):
+            patterns = [p.strip() for p in rule['window_title_pattern'].split(',')]
+            if any(fnmatch.fnmatch(info['window_title'], p) for p in patterns):
                 return True
 
         return False
 ```
 
+**매칭 로직:**
+- 우선순위 높은 룰부터 순차 검사
+- 조건 필드 중 하나라도 매치되면 즉시 반환 (OR)
+- 쉼표로 다중 패턴 지원 (`"*youtube.com*,*netflix.com*"`)
+- `fnmatch`로 와일드카드 패턴 처리
+
 ---
 
-### 2.5️⃣ `backend/chrome_receiver.py` - Chrome WebSocket 수신기
+### `backend/chrome_receiver.py` - Chrome WebSocket 서버
 ```python
-import threading
-import asyncio
-import websockets
-import json
-
 class ChromeURLReceiver:
-    """
-    Chrome Extension으로부터 URL 수신 (WebSocket 서버)
-
-    중요: 별도 스레드에서 asyncio 이벤트 루프 실행
-    """
-
     def __init__(self, port=8766):
         self.latest_data = {}
         self.port = port
-        self.lock = threading.Lock()  # 스레드 안전성 확보
+        self.lock = threading.Lock()
+        self.loop = None
+        self.server = None
 
-        # WebSocket 서버를 위한 별도 데몬 스레드 시작
+        # 별도 데몬 스레드에서 WebSocket 서버 실행
         threading.Thread(target=self._start_server, daemon=True).start()
 
     def _start_server(self):
-        """별도 스레드에서 asyncio 이벤트 루프 실행"""
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        loop = asyncio.get_event_loop()
+        """asyncio 이벤트 루프를 별도 스레드에서 실행"""
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
         start_server = websockets.serve(self._handler, "localhost", self.port)
-        loop.run_until_complete(start_server)
-        print(f"[ChromeURLReceiver] WebSocket 서버 시작: ws://localhost:{self.port}")
-        loop.run_forever()
+        self.server = self.loop.run_until_complete(start_server)
+        print(f"[WebSocket] 서버 시작: ws://localhost:{self.port}")
+        self.loop.run_forever()
 
     async def _handler(self, websocket, path):
-        """Chrome Extension 연결 처리"""
-        print(f"[ChromeURLReceiver] Chrome Extension 연결됨")
-        async for message in websocket:
-            try:
+        """Chrome Extension 메시지 처리"""
+        print("[WebSocket] Chrome Extension 연결됨")
+        try:
+            async for message in websocket:
                 data = json.loads(message)
                 if data.get('type') == 'url_change':
-                    # 스레드 안전하게 최신 데이터 저장
                     with self.lock:
                         self.latest_data = {
                             'url': data.get('url'),
                             'profile': data.get('profileName'),
                             'title': data.get('title'),
+                            'tab_id': data.get('tabId'),
                             'timestamp': data.get('timestamp'),
                         }
-            except json.JSONDecodeError:
-                pass
+        except websockets.ConnectionClosed:
+            print("[WebSocket] 연결 종료")
 
     def get_latest_url(self):
-        """
-        MonitorEngine에서 호출할 스레드 안전한 함수
-        Returns: {'url': ..., 'profile': ...} or {}
-        """
+        """스레드 안전하게 최신 URL 반환"""
         with self.lock:
             return self.latest_data.copy()
+
+    def stop(self):
+        """서버 종료 (graceful shutdown)"""
+        if self.loop and self.server:
+            self.loop.call_soon_threadsafe(self.server.close)
 ```
 
-**특징:**
-- `threading.Thread`로 별도 스레드에서 WebSocket 서버 실행
-- `MonitorEngine` (QThread)과 독립적으로 동작
-- `threading.Lock`으로 스레드 안전성 확보
-- Chrome Extension이 연결 끊어져도 프로그램은 정상 동작
+**설계 특징:**
+- 별도 데몬 스레드에서 asyncio 이벤트 루프 실행
+- MonitorEngine (QThread)와 완전 독립
+- `threading.Lock`으로 데이터 경합 방지
+- Chrome 연결 끊김에도 메인 프로그램 영향 없음
 
 ---
 
-### 3️⃣ `backend/database.py` - DB 매니저
+### `backend/auto_start.py` - 자동 시작 관리
 ```python
-from backend.config import AppConfig
-import sqlite3
+class AutoStartManager:
+    @staticmethod
+    def add_to_startup():
+        """Windows 레지스트리에 자동 시작 등록"""
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0, winreg.KEY_SET_VALUE
+        )
+        winreg.SetValueEx(key, "ActivityTracker", 0, winreg.REG_SZ, sys.executable)
+        winreg.CloseKey(key)
 
-class DatabaseManager:
-    """SQLite 데이터베이스 관리"""
+    @staticmethod
+    def remove_from_startup():
+        """자동 시작 제거"""
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0, winreg.KEY_SET_VALUE
+        )
+        try:
+            winreg.DeleteValue(key, "ActivityTracker")
+        except FileNotFoundError:
+            pass
+        winreg.CloseKey(key)
 
-    def __init__(self, db_path=None):
-        # db_path 지정 안 하면 AppConfig에서 자동 설정
-        if db_path is None:
-            db_path = AppConfig.get_db_path()
-
-        self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.init_database()
-
-    def init_database(self):
-        """테이블 생성 + 기본 데이터 삽입"""
-        # 위의 SQL 스키마 실행
-
-    # === 태그 관리 ===
-    def get_all_tags(self):
-        """모든 태그 조회"""
-
-    def create_tag(self, name, color):
-        """태그 생성"""
-
-    def update_tag(self, tag_id, name=None, color=None):
-        """태그 수정 (이름 변경해도 activities는 영향 없음)"""
-
-    def delete_tag(self, tag_id):
-        """태그 삭제 (activities.tag_id는 NULL로)"""
-
-    # === 활동 기록 ===
-    def create_activity(self, **kwargs):
-        """새 활동 시작 (start_time=now, end_time=NULL)"""
-
-    def end_activity(self, activity_id):
-        """활동 종료 (end_time=now)"""
-
-    def get_activities(self, start_date, end_date):
-        """기간별 활동 조회"""
-
-    # === 통계 ===
-    def get_stats_by_tag(self, start_date, end_date):
-        """태그별 사용 시간 통계"""
-        sql = """
-        SELECT
-            t.name AS tag_name,
-            t.color AS tag_color,
-            SUM((julianday(COALESCE(end_time, datetime('now'))) -
-                 julianday(start_time)) * 86400) AS total_seconds
-        FROM activities a
-        JOIN tags t ON a.tag_id = t.id
-        WHERE start_time >= ? AND start_time < ?
-        GROUP BY t.id
-        ORDER BY total_seconds DESC
-        """
-
-    def get_stats_by_process(self, start_date, end_date):
-        """프로세스별 사용 시간 통계"""
-
-    def get_timeline(self, date, limit=100):
-        """특정 날짜의 타임라인"""
-
-    # === 룰 관리 ===
-    def get_all_rules(self, enabled_only=False, order_by='priority DESC'):
-        """모든 룰 조회"""
-
-    def create_rule(self, **kwargs):
-        """룰 생성"""
-
-    def update_rule(self, rule_id, **kwargs):
-        """룰 수정"""
-
-    def delete_rule(self, rule_id):
-        """룰 삭제"""
+    @staticmethod
+    def is_in_startup():
+        """현재 자동 시작 상태 확인"""
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0, winreg.KEY_READ
+        )
+        try:
+            winreg.QueryValueEx(key, "ActivityTracker")
+            return True
+        except FileNotFoundError:
+            return False
+        finally:
+            winreg.CloseKey(key)
 ```
 
 ---
 
-## 🖥️ 프론트엔드 (PyQt6) 구조
+## 🖥️ 프론트엔드 (PyQt6)
 
-### 1️⃣ `ui/main_window.py` - 메인 윈도우
+### `ui/main_window.py` - 메인 윈도우
 ```python
 class MainWindow(QMainWindow):
-    """
-    메인 윈도우
-    - 탭 구조 (Dashboard, Timeline, Settings)
-    - 시스템 트레이 통합
-    - 백그라운드 모니터링 시작
-    """
-
     def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Activity Tracker")
+        self.setGeometry(100, 100, 1200, 800)
+
+        # 백엔드 초기화
         self.db_manager = DatabaseManager()
         self.rule_engine = RuleEngine(self.db_manager)
         self.monitor_engine = MonitorEngine(self.db_manager, self.rule_engine)
 
         # UI 구성
         self.create_tabs()
-        self.create_tray_icon()
+        self.tray_icon = SystemTrayIcon(self)
 
         # 모니터링 시작
         self.monitor_engine.activity_detected.connect(self.on_activity_update)
@@ -610,410 +652,433 @@ class MainWindow(QMainWindow):
     def create_tabs(self):
         tabs = QTabWidget()
         tabs.addTab(DashboardTab(self.db_manager), "📊 대시보드")
-        tabs.addTab(TimelineTab(self.db_manager), "⏱️ 타임라인")
+        tabs.addTab(TimelineTab(self.db_manager, self.monitor_engine), "⏱️ 타임라인")
         tabs.addTab(SettingsTab(self.db_manager, self.rule_engine), "⚙️ 설정")
         self.setCentralWidget(tabs)
 
-    def create_tray_icon(self):
-        """시스템 트레이 아이콘"""
-        self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(QIcon("icon.png"))
-
-        menu = QMenu()
-        menu.addAction("열기", self.show)
-        menu.addAction("종료", self.quit_app)
-        self.tray.setContextMenu(menu)
-        self.tray.show()
-
     def closeEvent(self, event):
-        """창 닫기 → 트레이로 최소화"""
-        event.ignore()
-        self.hide()
+        """Shift+닫기 = 종료, 일반 닫기 = 트레이로"""
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            self.quit_app()
+        else:
+            event.ignore()
+            self.hide()
+
+    def quit_app(self):
+        """애플리케이션 종료"""
+        self.monitor_engine.stop()
+        QApplication.quit()
 ```
 
 ---
 
-### 2️⃣ `ui/dashboard_tab.py` - 대시보드 탭
+### `ui/dashboard_tab.py` - 대시보드 탭
+**주요 구성 요소:**
+1. **날짜 선택기** - QDateEdit로 날짜 선택
+2. **태그별 통계 카드** - 진행률 바 + 사용 시간
+3. **파이 차트** - matplotlib 기반 태그 비율 시각화
+4. **프로세스 TOP 5** - QTableWidget 테이블
+
+**코드 구조:**
 ```python
 class DashboardTab(QWidget):
-    """
-    오늘의 통계 대시보드
-    - 태그별 사용 시간 (카드 + 진행률 바)
-    - 파이 차트 (matplotlib)
-    - 프로세스별 TOP 5
-    """
-
     def __init__(self, db_manager):
         self.db_manager = db_manager
+        self.selected_date = datetime.now().date()
 
+        # 레이아웃
         layout = QVBoxLayout()
-
-        # 날짜 선택
         layout.addWidget(self.create_date_selector())
-
-        # 통계 카드
         layout.addLayout(self.create_stat_cards())
-
-        # 차트 영역
         layout.addWidget(self.create_chart_area())
-
         self.setLayout(layout)
 
-        # 10초마다 자동 갱신
+        # 10초 자동 갱신
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh_stats)
         self.timer.start(10000)
 
+    def create_chart_area(self):
+        """Matplotlib 파이 차트"""
+        self.figure, self.ax = plt.subplots()
+        self.canvas = FigureCanvas(self.figure)
+        return self.canvas
+
     def refresh_stats(self):
-        """통계 데이터 갱신"""
-        today = datetime.now().date()
-        stats = self.db_manager.get_stats_by_tag(today, today + timedelta(days=1))
+        stats = self.db_manager.get_stats_by_tag(
+            self.selected_date,
+            self.selected_date + timedelta(days=1)
+        )
         self.update_cards(stats)
-        self.update_chart(stats)
+        self.update_pie_chart(stats)
 ```
+
+**한글 폰트 처리:**
+- `matplotlib.rc('font', family='Malgun Gothic')` 설정
+- 차트 한글 깨짐 방지
 
 ---
 
-### 3️⃣ `ui/timeline_tab.py` - 타임라인 탭
+### `ui/timeline_tab.py` - 타임라인 탭
+**주요 기능:**
+- 날짜/태그 필터링
+- 실시간 활동 추가 (MonitorEngine 시그널 연결)
+- QTableWidget 기반 테이블 뷰
+- 태그 셀에 색상 배경 표시
+
 ```python
 class TimelineTab(QWidget):
-    """
-    활동 타임라인 (테이블)
-    - 시간, 프로세스, 제목/URL, 태그, 시간 표시
-    - 필터링 (날짜, 태그)
-    - 수동 태그 변경 가능
-    """
-
-    def __init__(self, db_manager):
+    def __init__(self, db_manager, monitor_engine):
         self.db_manager = db_manager
+        self.selected_date = datetime.now().date()
 
-        layout = QVBoxLayout()
-
-        # 필터
-        layout.addLayout(self.create_filters())
-
-        # 테이블
+        # 테이블 구성
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
-            "시작 시간", "종료 시간", "프로세스", "제목/URL", "태그", "시간"
+            "시작", "종료", "프로세스", "제목/URL", "태그", "시간"
         ])
-        layout.addWidget(self.table)
 
-        self.setLayout(layout)
+        # 실시간 업데이트 연결
+        monitor_engine.activity_detected.connect(self.on_new_activity)
+
         self.load_timeline()
 
     def load_timeline(self):
-        """타임라인 데이터 로드"""
-        activities = self.db_manager.get_timeline(self.selected_date)
-        self.populate_table(activities)
+        activities = self.db_manager.get_timeline(self.selected_date, limit=100)
+        self.table.setRowCount(len(activities))
+
+        for row, act in enumerate(activities):
+            self.table.setItem(row, 0, QTableWidgetItem(act['start_time']))
+            self.table.setItem(row, 1, QTableWidgetItem(act['end_time'] or '진행중'))
+            # ... 태그 셀 색상 적용
 ```
 
 ---
 
-### 4️⃣ `ui/settings_tab.py` - 설정 탭
+### `ui/settings_tab.py` - 설정 탭
+
+**구성:**
+1. **일반 설정** - Windows 시작 시 자동 실행 체크박스
+2. **태그 관리** - 태그 추가/수정/삭제 (QColorDialog)
+3. **룰 관리** - 룰 추가/수정/삭제 (우선순위, 패턴 입력)
+
 ```python
 class SettingsTab(QWidget):
-    """
-    설정 탭
-    - 태그 관리 (추가/수정/삭제)
-    - 룰 관리 (추가/수정/삭제/우선순위)
-    """
-
     def __init__(self, db_manager, rule_engine):
         self.db_manager = db_manager
         self.rule_engine = rule_engine
 
-        layout = QHBoxLayout()
+        layout = QVBoxLayout()
+        layout.addWidget(self.create_general_settings())
 
-        # 왼쪽: 태그 관리
-        layout.addWidget(self.create_tag_manager())
-
-        # 오른쪽: 룰 관리
-        layout.addWidget(self.create_rule_manager())
+        # 하단: 태그/룰 관리를 좌우로 배치
+        bottom_layout = QHBoxLayout()
+        bottom_layout.addWidget(self.create_tag_manager())
+        bottom_layout.addWidget(self.create_rule_manager())
+        layout.addLayout(bottom_layout)
 
         self.setLayout(layout)
 
-    def create_tag_manager(self):
-        """태그 추가/수정/삭제 UI"""
-        widget = QGroupBox("태그 관리")
+    def create_general_settings(self):
+        """Windows 자동 시작 설정"""
+        group = QGroupBox("일반 설정")
         layout = QVBoxLayout()
 
-        # 태그 리스트
-        self.tag_list = QListWidget()
-        self.load_tags()
+        self.autostart_cb = QCheckBox("Windows 시작 시 자동 실행")
+        self.autostart_cb.setChecked(AutoStartManager.is_in_startup())
+        self.autostart_cb.toggled.connect(self.on_autostart_toggled)
 
-        # 버튼
-        btn_layout = QHBoxLayout()
-        btn_layout.addWidget(QPushButton("추가", clicked=self.add_tag))
-        btn_layout.addWidget(QPushButton("수정", clicked=self.edit_tag))
-        btn_layout.addWidget(QPushButton("삭제", clicked=self.delete_tag))
+        layout.addWidget(self.autostart_cb)
+        group.setLayout(layout)
+        return group
 
-        layout.addWidget(self.tag_list)
-        layout.addLayout(btn_layout)
-        widget.setLayout(layout)
-        return widget
-
-    def create_rule_manager(self):
-        """룰 추가/수정/삭제 UI"""
-        widget = QGroupBox("분류 룰 관리")
-        layout = QVBoxLayout()
-
-        # 룰 테이블
-        self.rule_table = QTableWidget()
-        self.rule_table.setColumnCount(5)
-        self.rule_table.setHorizontalHeaderLabels([
-            "우선순위", "이름", "조건", "태그", "활성화"
-        ])
-        self.load_rules()
-
-        # 버튼
-        btn_layout = QHBoxLayout()
-        btn_layout.addWidget(QPushButton("추가", clicked=self.add_rule))
-        btn_layout.addWidget(QPushButton("수정", clicked=self.edit_rule))
-        btn_layout.addWidget(QPushButton("삭제", clicked=self.delete_rule))
-
-        layout.addWidget(self.rule_table)
-        layout.addLayout(btn_layout)
-        widget.setLayout(layout)
-        return widget
-
-    def add_rule(self):
-        """룰 추가 다이얼로그"""
-        dialog = RuleEditDialog(self.db_manager)
-        if dialog.exec():
-            rule_data = dialog.get_rule_data()
-            self.db_manager.create_rule(**rule_data)
-            self.rule_engine.reload_rules()  # 룰 엔진 갱신!
-            self.load_rules()
+    def on_rule_changed(self):
+        """룰 변경 시 RuleEngine 즉시 리로드"""
+        self.rule_engine.reload_rules()
 ```
 
 ---
 
-## 🔄 실행 흐름
-
-### 프로그램 시작
-1. `main.py` 실행
-2. SQLite DB 초기화 (테이블 생성, 기본 데이터)
-3. PyQt6 메인 윈도우 생성
-4. 백그라운드 모니터링 스레드 시작
-5. Chrome Extension WebSocket 서버 시작 (포트 8766)
-6. 시스템 트레이에 아이콘 표시
-
-### 활동 추적 루프 (2초마다)
-1. **WindowTracker** - 활성 창 정보 수집
-2. **ScreenDetector** - 화면 잠금/idle 체크
-3. **ChromeURLReceiver** - 최신 Chrome URL 가져오기
-4. **활동 변경 감지**
-   - 이전 활동과 다르면?
-     - 이전 활동 종료 (end_time 업데이트)
-     - 새 활동 시작 (DB INSERT)
-5. **RuleEngine** - 룰 매칭해서 태그 자동 분류
-6. **UI 업데이트** - 시그널로 프론트엔드에 알림
-
-### 사용자 인터랙션
-- **대시보드**: 실시간 통계 확인
-- **타임라인**: 과거 활동 검색, 수동 태그 변경
-- **설정**: 태그/룰 추가/수정/삭제 → RuleEngine 즉시 리로드
-
----
-
-## 🎨 UI/UX 특징
-
-### 시스템 트레이 통합
-- 백그라운드 실행 (항상 모니터링)
-- 트레이 아이콘 클릭 → 메인 창 열기
-- 창 닫기 → 트레이로 최소화
-
-### 실시간 업데이트
-- 대시보드: 10초마다 통계 갱신
-- 타임라인: 새 활동 추가 시 자동 추가
-- 설정: 룰 변경 → 즉시 적용
-
-### 다크 테마
-- GitHub 스타일 다크 모드
-- QSS로 통일된 디자인
-
----
-
-## 🚀 구현 순서
-
-### Phase 1: 백엔드 코어
-1. ✅ 데이터베이스 스키마 구현
-2. ✅ DatabaseManager 구현
-3. ✅ 테스트 파일 3개 통합 → MonitorEngine
-4. ✅ RuleEngine 구현
-
-### Phase 2: 프론트엔드 기본
-5. ✅ MainWindow + 탭 구조
-6. ✅ DashboardTab (기본 통계)
-7. ✅ TimelineTab (테이블)
-
-### Phase 3: 설정 기능
-8. ✅ SettingsTab - 태그 관리
-9. ✅ SettingsTab - 룰 관리
-10. ✅ RuleEditDialog (룰 추가/수정 UI)
-
-### Phase 4: 고급 기능
-11. ✅ 차트 (matplotlib 통합)
-12. ✅ 시스템 트레이
-13. ✅ 자동 시작 (Windows 시작 프로그램 등록)
-
-### Phase 5: 패키징
-14. ✅ PyInstaller로 실행 파일 생성
-15. ✅ 설치 프로그램 (선택)
-
----
-
-## 📝 핵심 설계 결정
-
-### 1. 태그 ID 기반 참조
-- 태그 이름 변경 시 activities 테이블 영향 없음
-- `UPDATE tags SET name='연구' WHERE id=1` → 모든 기록 자동 반영
-
-### 2. 룰 우선순위
-- 화면 잠금 > URL > Chrome 프로필 > 프로세스 > 창 제목
-- 우선순위 숫자로 사용자 커스터마이징 가능
-
-### 3. 와일드카드 패턴
-- `*youtube.com*` - YouTube 관련 모든 URL
-- `*github.com/user/work-repo*` - 특정 레포지토리만
-
-### 4. 실시간 룰 갱신
-- 설정에서 룰 변경 → `rule_engine.reload_rules()` 호출
-- 다음 활동부터 즉시 적용
-
-### 5. 활동 구간 저장
-- `start_time` ~ `end_time` 구간
-- 통계 계산 시 `SUM(julianday(end_time) - julianday(start_time))`
-
----
-
-## 📦 빌드 및 배포
-
-### .gitignore 설정
-```gitignore
-# 데이터베이스
-activity_tracker.db
-activity_tracker.db-journal
-*.db
-*.db-journal
-
-# 설정 파일
-config.json
-
-# 로그
-logs/
-*.log
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-
-# PyInstaller
-*.spec
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-```
-
-### PyInstaller 빌드
-```bash
-# PyInstaller 설치
-pip install pyinstaller
-
-# 실행 파일 생성 (터미널 없이)
-pyinstaller --windowed --onefile --name="ActivityTracker" --icon=icon.ico main.py
-
-# 결과: dist/ActivityTracker.exe
-```
-
-**빌드 옵션:**
-- `--windowed` (또는 `-w`) - 터미널 창 숨김
-- `--onefile` - 단일 .exe 파일 생성
-- `--name` - 실행 파일 이름
-- `--icon` - 아이콘 파일 지정
-
-**빌드 후 동작:**
-- `sys.frozen = True` → AppConfig가 자동으로 AppData 경로 사용
-- 개발 중 DB는 프로젝트 폴더, 빌드 후 DB는 AppData에 분리
-
-### Windows 시작 프로그램 등록
+### `ui/tray_icon.py` - 시스템 트레이
 ```python
-# UI 설정 탭에서 체크박스로 제공
-import winreg
-import sys
+class SystemTrayIcon(QSystemTrayIcon):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setIcon(QIcon("icon.png"))
+        self.setToolTip("Activity Tracker")
 
-def add_to_startup():
-    key = winreg.OpenKey(
-        winreg.HKEY_CURRENT_USER,
-        r"Software\Microsoft\Windows\CurrentVersion\Run",
-        0, winreg.KEY_SET_VALUE
-    )
-    winreg.SetValueEx(key, "ActivityTracker", 0, winreg.REG_SZ, sys.executable)
-    winreg.CloseKey(key)
+        # 컨텍스트 메뉴
+        menu = QMenu()
+        menu.addAction("열기", parent.show)
+        menu.addAction("종료", parent.quit_app)
+        self.setContextMenu(menu)
+
+        # 더블클릭으로 창 열기
+        self.activated.connect(self.on_activated)
+        self.show()
+
+    def on_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.parent().show()
 ```
 
 ---
 
-## 🔐 보안/프라이버시
-- 모든 데이터 로컬 저장 (SQLite)
-- 네트워크 통신은 localhost WebSocket만 (Chrome Extension)
-- 배포 안함, 개인 사용
+### `ui/styles.py` - 다크 테마
+```python
+def apply_dark_theme(app):
+    """GitHub 스타일 다크 테마 적용"""
+    qss = """
+    QWidget {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: "Segoe UI", sans-serif;
+    }
+    QPushButton {
+        background-color: #007acc;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+    }
+    QPushButton:hover {
+        background-color: #005a9e;
+    }
+    QTableWidget {
+        gridline-color: #3c3c3c;
+        selection-background-color: #094771;
+    }
+    ...
+    """
+    app.setStyleSheet(qss)
+```
 
 ---
 
-## 📝 AI 검토 반영 사항
+## 🌐 Chrome Extension (Manifest V3)
 
-### 1. RuleEngine 로직 단순화 ✅
-**문제:** `is_locked`, `is_idle` 상태를 코드에서 하드코딩 + DB 룰로 중복 처리
-
-**해결:**
-- `MonitorEngine.collect_activity_info()`에서 상태를 먼저 판단
-- 화면 잠금 → `process_name = '__LOCKED__'`
-- Idle 상태 → `process_name = '__IDLE__'`
-- `RuleEngine.match()`는 모든 상태를 동일한 방식으로 처리 (priority 기반)
-
-**장점:**
-- 하드코딩 제거, 모든 로직이 `rules` 테이블로 위임
-- 사용자가 UI에서 자유롭게 idle 임계값 변경 가능 (룰 우선순위 조정)
-
-### 2. activities 테이블 스키마 단순화 ✅
-**문제:** `is_locked`, `is_idle` 컬럼이 `tag_id`와 중복
-
-**해결:**
-- `is_locked`, `is_idle`, `idle_seconds` 컬럼 제거
-- 상태는 `process_name`과 `tag_id`로 충분히 판별 가능
-- 필요 시 '화면잠금', '유휴상태' 태그를 별도로 생성
-
-**장점:**
-- 데이터 중복 제거
-- 스키마 단순화
-
-### 3. WebSocket 서버 스레드 관리 ✅
-**문제:** `ChromeURLReceiver`의 asyncio 이벤트 루프가 메인/QThread 차단 가능성
-
-**해결:**
-- `threading.Thread(daemon=True)`로 별도 스레드에서 WebSocket 서버 실행
-- `threading.Lock`으로 스레드 안전성 확보
-- `MonitorEngine` (QThread)과 독립적으로 동작
-
-**장점:**
-- UI/모니터링 스레드 차단 방지
-- Chrome Extension 연결 끊어져도 프로그램 정상 동작
+### `manifest.json` - 확장 프로그램 설정
+```json
+{
+  "manifest_version": 3,
+  "name": "Activity Tracker URL Sender",
+  "version": "1.0",
+  "permissions": ["tabs", "webNavigation", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
+```
 
 ---
 
-## 🚀 다음 단계
-Phase 1부터 구현 시작!
+### `background.js` - Service Worker
+
+**핵심 기능:**
+1. WebSocket 연결 관리 (`ws://localhost:8766`)
+2. 탭 활성화/업데이트/포커스 이벤트 감지
+3. URL 변경 시 JSON 메시지 전송
+4. 자동 재연결 (5초 간격)
+
+```javascript
+let ws = null;
+let profileName = '';
+
+// 스토리지에서 프로필명 로드
+chrome.storage.local.get(['profileName'], (result) => {
+  profileName = result.profileName || '';
+  connectWebSocket();
+});
+
+function connectWebSocket() {
+  ws = new WebSocket('ws://localhost:8766');
+
+  ws.onopen = () => console.log('[WS] 연결됨');
+
+  ws.onclose = () => {
+    console.log('[WS] 연결 끊김, 5초 후 재연결');
+    setTimeout(connectWebSocket, 5000);
+  };
+}
+
+function sendURL(tabId, url, title) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'url_change',
+      profileName: profileName,
+      tabId: tabId,
+      url: url,
+      title: title,
+      timestamp: Date.now()
+    }));
+  }
+}
+
+// 탭 활성화 시
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    sendURL(tab.id, tab.url, tab.title);
+  });
+});
+
+// 탭 URL 업데이트 시
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url && tab.active) {
+    sendURL(tab.id, changeInfo.url, tab.title);
+  }
+});
+
+// 창 포커스 변경 시
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+    chrome.tabs.query({active: true, windowId: windowId}, (tabs) => {
+      if (tabs[0]) sendURL(tabs[0].id, tabs[0].url, tabs[0].title);
+    });
+  }
+});
+```
+
+---
+
+### `popup.html/js` - 설정 팝업
+
+**기능:** 프로필명 입력 및 저장
+
+```html
+<input type="text" id="profileInput" placeholder="프로필명 입력">
+<button id="saveBtn">저장</button>
+<div id="status"></div>
+```
+
+```javascript
+// 저장
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const name = document.getElementById('profileInput').value;
+  chrome.storage.local.set({profileName: name}, () => {
+    document.getElementById('status').textContent = '저장됨!';
+  });
+});
+
+// 로드
+chrome.storage.local.get(['profileName'], (result) => {
+  document.getElementById('profileInput').value = result.profileName || '';
+});
+```
+
+---
+
+## 🔄 데이터 흐름
+
+### 1. 프로그램 시작
+```
+main.py
+  → QApplication 생성
+  → apply_dark_theme()
+  → MainWindow 생성
+    → DatabaseManager 초기화
+    → RuleEngine 초기화
+    → MonitorEngine.start() (QThread)
+    → ChromeURLReceiver 시작 (별도 스레드)
+    → SystemTrayIcon 표시
+```
+
+### 2. 활동 추적 루프 (2초마다)
+```
+MonitorEngine.run()
+  → collect_activity_info()
+    ├─ ScreenDetector.is_locked() → __LOCKED__?
+    ├─ ScreenDetector.get_idle_duration() → __IDLE__?
+    └─ WindowTracker.get_active_window() + ChromeURLReceiver.get_latest_url()
+
+  → is_activity_changed() 체크
+    → YES: end_current_activity() + start_new_activity()
+      → RuleEngine.match(activity_info)
+        → DatabaseManager.create_activity()
+      → emit activity_detected signal
+        → UI 업데이트 (Dashboard/Timeline)
+```
+
+### 3. Chrome URL 전송
+```
+Chrome Extension (background.js)
+  → chrome.tabs.onActivated/onUpdated
+  → sendURL(tabId, url, title)
+    → WebSocket.send(JSON)
+      → ChromeURLReceiver._handler()
+        → latest_data 업데이트 (threading.Lock)
+          → MonitorEngine.collect_activity_info()에서 참조
+```
+
+### 4. 룰 변경
+```
+SettingsTab
+  → 사용자가 룰 추가/수정/삭제
+  → DatabaseManager.create_rule() / update_rule() / delete_rule()
+  → RuleEngine.reload_rules()
+    → rules_cache 갱신
+      → 다음 활동부터 새 룰 적용
+```
+
+---
+
+## 📐 핵심 설계 원칙
+
+### 1. 스레드 안전성
+- **DatabaseManager**: `threading.local`로 스레드별 연결 분리
+- **ChromeURLReceiver**: `threading.Lock`으로 데이터 보호
+- **MonitorEngine**: QThread로 메인 UI와 격리
+
+### 2. 느슨한 결합
+- Backend 모듈은 UI 의존성 없음 (헤드리스 실행 가능)
+- Qt Signal/Slot으로 UI 업데이트 전달
+- RuleEngine은 DB만 참조, 다른 모듈과 독립
+
+### 3. 확장 가능성
+- 태그/룰 시스템으로 무한한 분류 가능
+- 우선순위 기반 룰 매칭으로 복잡한 조건 표현
+- 쉼표 구분 패턴으로 한 룰에 여러 조건 통합
+
+### 4. 사용자 제어
+- 모든 태그/룰 UI에서 CRUD
+- 실시간 룰 변경 즉시 반영
+- 수동 태그 변경 가능 (타임라인)
+
+---
+
+## 🛠️ 기술 스택
+
+**Backend:**
+- Python 3.x
+- SQLite3 (WAL 모드)
+- threading (멀티스레딩)
+- asyncio + websockets (WebSocket 서버)
+- ctypes (Windows API)
+- psutil (프로세스 정보)
+
+**Frontend:**
+- PyQt6 (GUI)
+- matplotlib (차트)
+- QSS (스타일시트)
+
+**Chrome Extension:**
+- Manifest V3
+- Service Worker (background.js)
+- chrome.tabs/webNavigation API
+- WebSocket 클라이언트
+
+**빌드/배포:**
+- PyInstaller (단일 exe)
+- Windows Registry (자동 시작)
+
+---
+
+## 🔐 보안 및 프라이버시
+
+- 모든 데이터 로컬 저장 (외부 전송 없음)
+- WebSocket 통신은 localhost만 허용
+- Chrome Extension은 로컬 연결만 사용
+- 개인 사용 목적, 배포 없음

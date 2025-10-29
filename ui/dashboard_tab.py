@@ -47,6 +47,7 @@ class DashboardTab(QWidget):
 
         # 통계 카드 (왼쪽) - 3열 그리드
         stats_group = QGroupBox("태그별 사용 시간")
+        stats_group.setMaximumHeight(300)  # 높이 제한
         self.stats_layout = QGridLayout()
         self.stats_layout.setSpacing(15)
         stats_group.setLayout(self.stats_layout)
@@ -54,16 +55,17 @@ class DashboardTab(QWidget):
 
         # 파이 차트 (오른쪽)
         chart_group = QGroupBox("태그별 비율")
+        chart_group.setMaximumHeight(300)  # 높이 제한
         chart_layout = QVBoxLayout()
         self.chart_canvas = self.create_pie_chart()
         chart_layout.addWidget(self.chart_canvas)
         chart_group.setLayout(chart_layout)
         stats_and_chart.addWidget(chart_group, stretch=1)
 
-        layout.addLayout(stats_and_chart)
+        layout.addLayout(stats_and_chart, stretch=1)
 
         # 프로세스별 TOP 5
-        layout.addWidget(self.create_process_table())
+        layout.addWidget(self.create_process_table(), stretch=2)
 
         self.setLayout(layout)
 
@@ -84,6 +86,7 @@ class DashboardTab(QWidget):
         self.date_edit = QDateEdit()
         self.date_edit.setDate(QDate.currentDate())
         self.date_edit.setCalendarPopup(True)
+        self.date_edit.setMinimumWidth(150)  # 너비 확장
         self.date_edit.dateChanged.connect(self.on_date_changed)
 
         # 오늘 버튼

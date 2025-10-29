@@ -237,6 +237,27 @@ class DatabaseManager:
         """, (datetime.now(), activity_id))
         self.conn.commit()
 
+    def cleanup_unfinished_activities(self):
+        """
+        종료되지 않은 활동들을 정리 (프로그램 시작 시 호출)
+
+        end_time이 NULL인 활동들을 start_time으로부터 1분 후로 종료 처리
+        (프로그램이 비정상 종료된 경우를 대비)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE activities
+            SET end_time = datetime(start_time, '+1 minute')
+            WHERE end_time IS NULL
+        """)
+        affected_rows = cursor.rowcount
+        self.conn.commit()
+
+        if affected_rows > 0:
+            print(f"[DatabaseManager] {affected_rows}개의 종료되지 않은 활동 정리 완료")
+
+        return affected_rows
+
     def get_activities(self, start_date: datetime, end_date: datetime,
                        tag_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """기간별 활동 조회"""

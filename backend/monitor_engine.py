@@ -48,6 +48,9 @@ class MonitorEngine(QThread):
         self.last_activity_info: Optional[Dict[str, Any]] = None
         self.running = False
 
+        # 프로그램 시작 시 종료되지 않은 활동 정리
+        self.db_manager.cleanup_unfinished_activities()
+
     def run(self):
         """스레드 메인 루프 (2초마다 체크)"""
         self.running = True

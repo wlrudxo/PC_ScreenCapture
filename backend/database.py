@@ -423,6 +423,34 @@ class DatabaseManager:
         cursor.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
         self.conn.commit()
 
+    # === 미분류 재분류 ===
+    def get_unclassified_activities(self) -> List[Dict[str, Any]]:
+        """미분류 태그를 가진 모든 활동 조회"""
+        cursor = self.conn.cursor()
+
+        # 미분류 태그 ID 조회
+        unclassified_tag = self.get_tag_by_name('미분류')
+        if not unclassified_tag:
+            return []
+
+        cursor.execute("""
+            SELECT id, process_name, window_title, chrome_url, chrome_profile
+            FROM activities
+            WHERE tag_id = ?
+            ORDER BY start_time DESC
+        """, (unclassified_tag['id'],))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def update_activity_classification(self, activity_id: int, tag_id: int, rule_id: Optional[int] = None):
+        """활동의 분류 정보 업데이트"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE activities
+            SET tag_id = ?, rule_id = ?
+            WHERE id = ?
+        """, (tag_id, rule_id, activity_id))
+        self.conn.commit()
+
     def close(self):
         """DB 연결 종료"""
         self.conn.close()

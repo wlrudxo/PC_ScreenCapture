@@ -2,7 +2,7 @@
 대시보드 탭 - 오늘의 통계
 """
 from datetime import datetime, timedelta
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
                             QProgressBar, QTableWidget, QTableWidgetItem,
                             QDateEdit, QPushButton, QFrame, QGroupBox)
 from PyQt6.QtCore import Qt, QTimer, QDate
@@ -45,9 +45,10 @@ class DashboardTab(QWidget):
         stats_and_chart = QHBoxLayout()
         stats_and_chart.setSpacing(20)
 
-        # 통계 카드 (왼쪽)
+        # 통계 카드 (왼쪽) - 3열 그리드
         stats_group = QGroupBox("태그별 사용 시간")
-        self.stats_layout = QVBoxLayout()
+        self.stats_layout = QGridLayout()
+        self.stats_layout.setSpacing(15)
         stats_group.setLayout(self.stats_layout)
         stats_and_chart.addWidget(stats_group, stretch=2)
 
@@ -161,33 +162,43 @@ class DashboardTab(QWidget):
             print(f"[DashboardTab] 통계 갱신 오류: {e}")
 
     def update_stat_cards(self, stats):
-        """태그별 통계 카드 업데이트"""
+        """태그별 통계 카드 업데이트 (3열 그리드)"""
         # 기존 카드 제거
         while self.stats_layout.count():
             child = self.stats_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
 
-        # 총 시간 계산
-        total_seconds = sum(s['total_seconds'] or 0 for s in stats)
+        # 총 시간 계산 (자리비움 제외)
+        total_seconds = sum(s['total_seconds'] or 0 for s in stats if s['tag_name'] != '자리비움')
 
-        # 카드 생성
+        # 카드 생성 (3열 그리드)
+        row = 0
+        col = 0
         for stat in stats:
+            percentage = 0
+            if total_seconds > 0 and stat['tag_name'] != '자리비움':
+                percentage = (stat['total_seconds'] or 0) / total_seconds * 100
+
             card = self.create_stat_card(
                 stat['tag_name'],
                 stat['tag_color'],
                 stat['total_seconds'] or 0,
-                total_seconds
+                percentage
             )
-            self.stats_layout.addWidget(card)
+            self.stats_layout.addWidget(card, row, col)
 
-        self.stats_layout.addStretch()
+            # 다음 위치 계산 (3열)
+            col += 1
+            if col >= 3:
+                col = 0
+                row += 1
 
-    def create_stat_card(self, tag_name, tag_color, seconds, total_seconds):
+    def create_stat_card(self, tag_name, tag_color, seconds, percentage):
         """개별 통계 카드 생성"""
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setMaximumWidth(250)
+        card.setMaximumWidth(300)
 
         layout = QVBoxLayout()
         layout.setSpacing(10)
@@ -196,19 +207,18 @@ class DashboardTab(QWidget):
         name_label = QLabel(tag_name)
         name_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
 
-        # 사용 시간
+        # 사용 시간 + 퍼센트
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
-        time_label = QLabel(f"{hours}시간 {minutes}분")
-        time_label.setFont(QFont("Arial", 12))
+        if percentage > 0:
+            time_label = QLabel(f"{hours}시간 {minutes}분 ({percentage:.1f}%)")
+        else:
+            time_label = QLabel(f"{hours}시간 {minutes}분")
+        time_label.setFont(QFont("Arial", 11))
 
         # 진행률 바
         progress = QProgressBar()
-        if total_seconds > 0:
-            percentage = int((seconds / total_seconds) * 100)
-            progress.setValue(percentage)
-        else:
-            progress.setValue(0)
+        progress.setValue(int(percentage))
 
         # 색상 적용
         progress.setStyleSheet(f"""
@@ -240,12 +250,16 @@ class DashboardTab(QWidget):
             self.chart_canvas.draw()
             return
 
-        # 데이터 준비
+        # 데이터 준비 (자리비움 제외)
         labels = []
         sizes = []
         colors = []
 
         for stat in stats:
+            # 자리비움 태그는 차트에서 제외
+            if stat['tag_name'] == '자리비움':
+                continue
+
             seconds = stat['total_seconds'] or 0
             if seconds > 0:  # 0초 이상만 표시
                 labels.append(stat['tag_name'])

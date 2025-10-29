@@ -64,7 +64,10 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
 });
 
 function sendUrlToServer(tabId, url, title) {
+  // WebSocket이 끊어져 있으면 즉시 재연결 시도
   if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log('[Activity Tracker] ⚠️ WebSocket 끊김 감지, 즉시 재연결 시도...');
+    connectWebSocket();
     return;
   }
 

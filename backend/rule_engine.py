@@ -84,17 +84,25 @@ class RuleEngine:
             True: 매칭됨
             False: 매칭 안됨
         """
-        # 프로세스 이름 매칭
+        # 프로세스 이름 매칭 (쉼표로 구분된 여러 패턴 지원)
         if rule.get('process_pattern'):
             process_name = activity_info.get('process_name', '')
-            if process_name and fnmatch(process_name, rule['process_pattern']):
-                return True
+            if process_name:
+                # 쉼표로 구분된 패턴들을 각각 테스트
+                patterns = [p.strip() for p in rule['process_pattern'].split(',')]
+                for pattern in patterns:
+                    if pattern and fnmatch(process_name, pattern):
+                        return True
 
-        # URL 패턴 매칭
+        # URL 패턴 매칭 (쉼표로 구분된 여러 패턴 지원)
         if rule.get('url_pattern'):
             chrome_url = activity_info.get('chrome_url', '')
-            if chrome_url and fnmatch(chrome_url, rule['url_pattern']):
-                return True
+            if chrome_url:
+                # 쉼표로 구분된 패턴들을 각각 테스트
+                patterns = [p.strip() for p in rule['url_pattern'].split(',')]
+                for pattern in patterns:
+                    if pattern and fnmatch(chrome_url, pattern):
+                        return True
 
         # Chrome 프로필 매칭
         if rule.get('chrome_profile'):
@@ -102,10 +110,14 @@ class RuleEngine:
             if chrome_profile and chrome_profile == rule['chrome_profile']:
                 return True
 
-        # 창 제목 매칭
+        # 창 제목 매칭 (쉼표로 구분된 여러 패턴 지원)
         if rule.get('window_title_pattern'):
             window_title = activity_info.get('window_title', '')
-            if window_title and fnmatch(window_title, rule['window_title_pattern']):
-                return True
+            if window_title:
+                # 쉼표로 구분된 패턴들을 각각 테스트
+                patterns = [p.strip() for p in rule['window_title_pattern'].split(',')]
+                for pattern in patterns:
+                    if pattern and fnmatch(window_title, pattern):
+                        return True
 
         return False

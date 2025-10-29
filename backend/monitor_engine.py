@@ -117,7 +117,7 @@ class MonitorEngine(QThread):
         if idle_seconds > self.IDLE_THRESHOLD:
             return {
                 'process_name': '__IDLE__',
-                'window_title': f'Idle ({int(idle_seconds)}s)',
+                'window_title': 'Idle',  # 고정값 (시간 정보 제거)
                 'chrome_url': None,
                 'chrome_profile': None,
             }
@@ -139,7 +139,9 @@ class MonitorEngine(QThread):
         if 'chrome' in process_name_lower:
             chrome_data = self.chrome_receiver.get_latest_url()
             if chrome_data:
-                print(f"[MonitorEngine] Chrome URL 감지: {chrome_data.get('url', 'N/A')}")
+                profile = chrome_data.get('profile', 'N/A')
+                url = chrome_data.get('url', 'N/A')
+                print(f"[MonitorEngine] Chrome 감지 - 프로필: [{profile}] URL: {url}")
 
         return {
             'process_name': window_info['process_name'],
@@ -162,9 +164,17 @@ class MonitorEngine(QThread):
         if self.last_activity_info is None:
             return True  # 첫 활동
 
-        # 주요 필드 비교
+        # process_name이 다르면 활동 변경
+        if new_info['process_name'] != self.last_activity_info['process_name']:
+            return True
+
+        # 특수 상태(__IDLE__, __LOCKED__)는 process_name만 비교
+        # (window_title에 시간 정보가 포함되어 계속 바뀌므로)
+        if new_info['process_name'] in ('__IDLE__', '__LOCKED__'):
+            return False
+
+        # 일반 활동은 window_title과 chrome_url도 비교
         return (
-            new_info['process_name'] != self.last_activity_info['process_name'] or
             new_info['window_title'] != self.last_activity_info['window_title'] or
             new_info['chrome_url'] != self.last_activity_info['chrome_url']
         )

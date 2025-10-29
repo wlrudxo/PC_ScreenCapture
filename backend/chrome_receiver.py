@@ -71,6 +71,10 @@ class ChromeURLReceiver:
                                 'tab_id': data.get('tabId'),
                                 'timestamp': data.get('timestamp'),
                             }
+                        # 로그 출력
+                        profile = data.get('profileName', 'Unknown')
+                        url = data.get('url', '')
+                        print(f"[ChromeURLReceiver] 📥 [{profile}] URL 수신: {url}")
                 except json.JSONDecodeError:
                     pass  # 잘못된 JSON 무시
 

@@ -288,7 +288,7 @@ class DatabaseManager:
                 t.id AS tag_id,
                 t.name AS tag_name,
                 t.color AS tag_color,
-                SUM((julianday(COALESCE(a.end_time, datetime('now'))) -
+                SUM((julianday(COALESCE(a.end_time, datetime('now', 'localtime'))) -
                      julianday(a.start_time)) * 86400) AS total_seconds
             FROM activities a
             JOIN tags t ON a.tag_id = t.id
@@ -305,7 +305,7 @@ class DatabaseManager:
         cursor.execute("""
             SELECT
                 process_name,
-                SUM((julianday(COALESCE(end_time, datetime('now'))) -
+                SUM((julianday(COALESCE(end_time, datetime('now', 'localtime'))) -
                      julianday(start_time)) * 86400) AS total_seconds,
                 COUNT(*) AS activity_count
             FROM activities

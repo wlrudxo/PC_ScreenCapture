@@ -561,6 +561,18 @@ class RuleEditDialog(QDialog):
         self.profile_edit.setPlaceholderText("예: 업무용, 딴짓용")
         layout.addRow("Chrome 프로필:", self.profile_edit)
 
+        # 프로세스 경로 패턴
+        self.process_path_edit = QLineEdit()
+        if rule_data and rule_data.get('process_path_pattern'):
+            self.process_path_edit.setText(rule_data['process_path_pattern'])
+        self.process_path_edit.setPlaceholderText("예: *\\AnkiProgramFiles\\*, *\\Obsidian\\*")
+        layout.addRow("프로세스 경로 패턴:", self.process_path_edit)
+
+        # 프로세스 경로 힌트
+        path_hint = QLabel("💡 프로그램 설치 경로로 식별 (pythonw.exe 등 동일 이름 구분)")
+        path_hint.setStyleSheet("color: #888; font-size: 9pt;")
+        layout.addRow("", path_hint)
+
         # 구분선
         layout.addRow(QLabel("<hr>"))
 
@@ -628,5 +640,6 @@ class RuleEditDialog(QDialog):
             'url_pattern': self.url_edit.text().strip() or None,
             'window_title_pattern': self.title_edit.text().strip() or None,
             'chrome_profile': self.profile_edit.text().strip() or None,
+            'process_path_pattern': self.process_path_edit.text().strip() or None,
             'tag_id': self.tag_combo.currentData(),
         }

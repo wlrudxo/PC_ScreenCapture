@@ -106,6 +106,7 @@ class DatabaseManager:
                 url_pattern TEXT,
                 window_title_pattern TEXT,
                 chrome_profile TEXT,
+                process_path_pattern TEXT,
 
                 tag_id INTEGER NOT NULL,
 
@@ -115,6 +116,14 @@ class DatabaseManager:
                 FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             )
         """)
+
+        # 기존 테이블에 process_path_pattern 컬럼 추가 (마이그레이션)
+        try:
+            cursor.execute("ALTER TABLE rules ADD COLUMN process_path_pattern TEXT")
+            self.conn.commit()
+        except Exception:
+            # 이미 컬럼이 존재하면 무시
+            pass
 
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
@@ -384,16 +393,17 @@ class DatabaseManager:
                    enabled: bool = True, process_pattern: Optional[str] = None,
                    url_pattern: Optional[str] = None,
                    window_title_pattern: Optional[str] = None,
-                   chrome_profile: Optional[str] = None) -> int:
+                   chrome_profile: Optional[str] = None,
+                   process_path_pattern: Optional[str] = None) -> int:
         """룰 생성"""
         cursor = self.conn.cursor()
         cursor.execute("""
             INSERT INTO rules
             (name, priority, enabled, process_pattern, url_pattern,
-             window_title_pattern, chrome_profile, tag_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             window_title_pattern, chrome_profile, process_path_pattern, tag_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (name, priority, enabled, process_pattern, url_pattern,
-              window_title_pattern, chrome_profile, tag_id))
+              window_title_pattern, chrome_profile, process_path_pattern, tag_id))
         self.conn.commit()
         return cursor.lastrowid
 
@@ -401,7 +411,7 @@ class DatabaseManager:
         """룰 수정"""
         allowed_fields = ['name', 'priority', 'enabled', 'process_pattern',
                          'url_pattern', 'window_title_pattern',
-                         'chrome_profile', 'tag_id']
+                         'chrome_profile', 'process_path_pattern', 'tag_id']
 
         updates = []
         values = []

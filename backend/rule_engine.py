@@ -120,4 +120,14 @@ class RuleEngine:
                     if pattern and fnmatch(window_title, pattern):
                         return True
 
+        # 프로세스 경로 매칭 (쉼표로 구분된 여러 패턴 지원)
+        if rule.get('process_path_pattern'):
+            process_path = activity_info.get('process_path', '')
+            if process_path:
+                # 쉼표로 구분된 패턴들을 각각 테스트
+                patterns = [p.strip() for p in rule['process_path_pattern'].split(',')]
+                for pattern in patterns:
+                    if pattern and fnmatch(process_path, pattern):
+                        return True
+
         return False

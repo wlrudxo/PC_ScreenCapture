@@ -136,6 +136,10 @@ class MonitorEngine(QThread):
                 'chrome_profile': None,
             }
 
+        # 프로세스 경로 로그 출력
+        if window_info.get('process_path'):
+            print(f"[ProcessPath] {window_info['process_name']} -> {window_info['process_path']}")
+
         # Chrome URL 데이터 가져오기 (Chrome 프로세스일 때만)
         chrome_data = None
         process_name_lower = window_info['process_name'].lower()
@@ -151,6 +155,7 @@ class MonitorEngine(QThread):
             'window_title': window_info['window_title'],
             'chrome_url': chrome_data.get('url') if chrome_data else None,
             'chrome_profile': chrome_data.get('profile') if chrome_data else None,
+            'process_path': window_info.get('process_path'),
         }
 
     def _is_activity_changed(self, new_info: Dict[str, Any]) -> bool:

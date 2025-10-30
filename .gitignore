@@ -1,8 +1,12 @@
 # 데이터베이스
 activity_tracker.db
 activity_tracker.db-journal
+activity_tracker.db-wal
+activity_tracker.db-shm
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # 설정 파일
 config.json
@@ -10,6 +14,10 @@ config.json
 # 로그
 logs/
 *.log
+
+# 테스트 파일
+test_*.json
+test_*.db
 
 # Python
 __pycache__/
@@ -35,3 +43,4 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+nul

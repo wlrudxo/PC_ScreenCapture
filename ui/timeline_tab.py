@@ -55,6 +55,7 @@ class TimelineTab(QWidget):
         self.date_edit = QDateEdit()
         self.date_edit.setDate(QDate.currentDate())
         self.date_edit.setCalendarPopup(True)
+        self.date_edit.setMinimumWidth(150)  # 너비 확장
         self.date_edit.dateChanged.connect(self.on_filter_changed)
 
         # 오늘 버튼

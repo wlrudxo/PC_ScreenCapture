@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QComboBox, QGroupBox, QHeaderView)
 from PyQt6.QtCore import Qt, QDate, pyqtSlot
 
+from ui.date_navigation_widget import DateNavigationWidget
+
 
 class TimelineTab(QWidget):
     """
@@ -51,16 +53,9 @@ class TimelineTab(QWidget):
         group = QGroupBox("필터")
         layout = QHBoxLayout()
 
-        # 날짜 선택
-        self.date_edit = QDateEdit()
-        self.date_edit.setDate(QDate.currentDate())
-        self.date_edit.setCalendarPopup(True)
-        self.date_edit.setMinimumWidth(150)  # 너비 확장
-        self.date_edit.dateChanged.connect(self.on_filter_changed)
-
-        # 오늘 버튼
-        today_btn = QPushButton("오늘")
-        today_btn.clicked.connect(self.goto_today)
+        # 날짜 선택 위젯
+        self.date_nav = DateNavigationWidget(label_text="날짜:", show_label=True)
+        self.date_nav.date_changed.connect(self.on_filter_changed)
 
         # 태그 필터
         self.tag_combo = QComboBox()
@@ -72,9 +67,7 @@ class TimelineTab(QWidget):
         refresh_btn = QPushButton("새로고침")
         refresh_btn.clicked.connect(self.load_timeline)
 
-        layout.addWidget(QLabel("날짜:"))
-        layout.addWidget(self.date_edit)
-        layout.addWidget(today_btn)
+        layout.addWidget(self.date_nav)
         layout.addSpacing(20)
         layout.addWidget(QLabel("태그:"))
         layout.addWidget(self.tag_combo)
@@ -119,13 +112,9 @@ class TimelineTab(QWidget):
 
     def on_filter_changed(self):
         """필터 변경 이벤트"""
-        self.selected_date = self.date_edit.date().toPyDate()
+        self.selected_date = self.date_nav.get_date().toPyDate()
         self.selected_tag = self.tag_combo.currentData()
         self.load_timeline()
-
-    def goto_today(self):
-        """오늘로 이동"""
-        self.date_edit.setDate(QDate.currentDate())
 
     def load_timeline(self):
         """타임라인 데이터 로드"""

@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLa
 from PyQt6.QtCore import Qt, QTimer, QDate
 from PyQt6.QtGui import QFont
 
+from ui.date_navigation_widget import DateNavigationWidget
+
 import matplotlib
 matplotlib.use('QtAgg')  # PyQt6 백엔드 사용
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -103,36 +105,16 @@ class DailyStatsWidget(QWidget):
         group = QGroupBox("날짜 선택")
         layout = QHBoxLayout()
 
-        # 날짜 선택
-        self.date_edit = QDateEdit()
-        self.date_edit.setDate(QDate.currentDate())
-        self.date_edit.setCalendarPopup(True)
-        self.date_edit.setMinimumWidth(150)  # 너비 확장
-        self.date_edit.dateChanged.connect(self.on_date_changed)
-
-        # 오늘 버튼
-        today_btn = QPushButton("오늘")
-        today_btn.clicked.connect(self.goto_today)
-
-        # 이전/다음 날짜 버튼
-        prev_day_btn = QPushButton("<")
-        prev_day_btn.setMaximumWidth(40)
-        prev_day_btn.clicked.connect(self.goto_previous_day)
-
-        next_day_btn = QPushButton(">")
-        next_day_btn.setMaximumWidth(40)
-        next_day_btn.clicked.connect(self.goto_next_day)
+        # 날짜 선택 위젯
+        self.date_nav = DateNavigationWidget(label_text="날짜:", show_label=True)
+        self.date_nav.date_changed.connect(self.on_date_changed)
 
         # 총 활동 시간 레이블
         self.total_time_label = QLabel("총 활동 시간: 0시간 0분")
         self.total_time_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.total_time_label.setStyleSheet("color: #4CAF50;")
 
-        layout.addWidget(QLabel("날짜:"))
-        layout.addWidget(self.date_edit)
-        layout.addWidget(today_btn)
-        layout.addWidget(prev_day_btn)
-        layout.addWidget(next_day_btn)
+        layout.addWidget(self.date_nav)
         layout.addStretch()
         layout.addWidget(self.total_time_label)
 
@@ -178,20 +160,6 @@ class DailyStatsWidget(QWidget):
         """날짜 변경 이벤트"""
         self.selected_date = qdate.toPyDate()
         self.refresh_stats()
-
-    def goto_today(self):
-        """오늘로 이동"""
-        self.date_edit.setDate(QDate.currentDate())
-
-    def goto_previous_day(self):
-        """이전 날짜로 이동"""
-        current = self.date_edit.date()
-        self.date_edit.setDate(current.addDays(-1))
-
-    def goto_next_day(self):
-        """다음 날짜로 이동"""
-        current = self.date_edit.date()
-        self.date_edit.setDate(current.addDays(1))
 
     def refresh_stats(self):
         """통계 데이터 갱신"""

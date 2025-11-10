@@ -418,6 +418,26 @@ class PeriodStatsWidget(QWidget):
 
         layout.addStretch()
 
+        # 통계 요약 (우측, 2줄)
+        stats_layout = QVBoxLayout()
+        stats_layout.setSpacing(5)
+
+        # 총 활동 시간 레이블
+        self.total_time_label = QLabel("총 활동 시간: 0시간 0분")
+        self.total_time_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        self.total_time_label.setStyleSheet("color: #4CAF50;")
+        self.total_time_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        stats_layout.addWidget(self.total_time_label)
+
+        # 주중 평균 활동 시간 레이블
+        self.weekday_avg_label = QLabel("주중 평균 활동 시간: 0시간 0분")
+        self.weekday_avg_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        self.weekday_avg_label.setStyleSheet("color: #2196F3;")
+        self.weekday_avg_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        stats_layout.addWidget(self.weekday_avg_label)
+
+        layout.addLayout(stats_layout)
+
         group.setLayout(layout)
         return group
 
@@ -513,6 +533,9 @@ class PeriodStatsWidget(QWidget):
             # 차트 및 테이블 업데이트
             self.update_stacked_chart(date_range, all_data, all_tags)
             self.update_stats_table(date_range, all_data, all_tags)
+
+            # 기간별 통계 요약 업데이트
+            self.update_period_summary(date_range, all_data)
 
         except Exception as e:
             print(f"[PeriodStatsWidget] 통계 갱신 오류: {e}")
@@ -646,6 +669,36 @@ class PeriodStatsWidget(QWidget):
 
         # 열 너비 자동 조정
         self.stats_table.resizeColumnsToContents()
+
+    def update_period_summary(self, date_range, all_data):
+        """기간별 통계 요약 업데이트 (총 활동시간, 주중 평균)"""
+        total_seconds = 0
+        weekday_seconds = 0
+        weekday_count = 0
+
+        for date in date_range:
+            # 해당 날짜의 총 활동 시간 계산
+            day_total = sum(all_data[date].values())
+            total_seconds += day_total
+
+            # 주중 (월~금, weekday 0~4) 이면서 활동이 있는 날만 카운트
+            if date.weekday() < 5 and day_total > 0:
+                weekday_seconds += day_total
+                weekday_count += 1
+
+        # 총 활동 시간 업데이트
+        hours = int(total_seconds // 3600)
+        minutes = int((total_seconds % 3600) // 60)
+        self.total_time_label.setText(f"총 활동 시간: {hours}시간 {minutes}분")
+
+        # 주중 평균 활동 시간 업데이트
+        if weekday_count > 0:
+            avg_seconds = weekday_seconds / weekday_count
+            hours = int(avg_seconds // 3600)
+            minutes = int((avg_seconds % 3600) // 60)
+            self.weekday_avg_label.setText(f"주중 평균 활동 시간: {hours}시간 {minutes}분")
+        else:
+            self.weekday_avg_label.setText("주중 평균 활동 시간: 0시간 0분")
 
     def closeEvent(self, event):
         """위젯 닫기 전 리소스 정리"""

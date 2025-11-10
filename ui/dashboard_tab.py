@@ -4,7 +4,8 @@
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
                             QProgressBar, QTableWidget, QTableWidgetItem,
-                            QDateEdit, QPushButton, QFrame, QGroupBox, QTabWidget)
+                            QDateEdit, QPushButton, QFrame, QGroupBox, QTabWidget,
+                            QHeaderView)
 from PyQt6.QtCore import Qt, QTimer, QDate
 from PyQt6.QtGui import QFont
 
@@ -149,7 +150,7 @@ class DailyStatsWidget(QWidget):
         self.process_table = QTableWidget()
         self.process_table.setColumnCount(3)
         self.process_table.setHorizontalHeaderLabels(["프로세스", "사용 시간", "활동 수"])
-        self.process_table.horizontalHeader().setStretchLastSection(True)
+        self.process_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.process_table.setAlternatingRowColors(True)
 
         layout.addWidget(self.process_table)
@@ -322,9 +323,6 @@ class DailyStatsWidget(QWidget):
             # 활동 수
             self.process_table.setItem(row, 2, QTableWidgetItem(str(stat['activity_count'])))
 
-        # 열 너비 자동 조정
-        self.process_table.resizeColumnsToContents()
-
     def closeEvent(self, event):
         """위젯 닫기 전 리소스 정리"""
         # 타이머 정지
@@ -474,6 +472,7 @@ class PeriodStatsWidget(QWidget):
 
         self.stats_table = QTableWidget()
         self.stats_table.setAlternatingRowColors(True)
+        self.stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         layout.addWidget(self.stats_table)
         group.setLayout(layout)
@@ -666,9 +665,6 @@ class PeriodStatsWidget(QWidget):
         total_item = QTableWidgetItem(f"{hours}h {minutes}m")
         total_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         self.stats_table.setItem(last_row, len(sorted_tags) + 1, total_item)
-
-        # 열 너비 자동 조정
-        self.stats_table.resizeColumnsToContents()
 
     def update_period_summary(self, date_range, all_data):
         """기간별 통계 요약 업데이트 (총 활동시간, 주중 평균)"""

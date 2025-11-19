@@ -5,9 +5,123 @@ from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QTableWidget, QTableWidgetItem, QDateEdit,
                             QPushButton, QComboBox, QGroupBox, QHeaderView)
-from PyQt6.QtCore import Qt, QDate, pyqtSlot
+from PyQt6.QtCore import Qt, QDate, pyqtSlot, QRect
+from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
 
 from ui.date_navigation_widget import DateNavigationWidget
+
+
+class TimelineBarWidget(QWidget):
+    """
+    24시간 세로 타임라인 바
+    - 0시~24시 세로 표시
+    - 활동을 태그별 색상 세그먼트로 시각화
+    - 연속된 같은 태그 활동은 하나로 병합
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.segments = []  # {start_seconds, end_seconds, tag_color, tag_name}
+        self.setMinimumWidth(200)
+        self.setMaximumWidth(250)
+
+    def set_activities(self, activities):
+        """
+        활동 데이터를 받아 세그먼트로 변환
+        연속된 같은 태그는 하나로 병합
+        """
+        if not activities:
+            self.segments = []
+            self.update()
+            return
+
+        # 시간 순 정렬
+        sorted_activities = sorted(activities, key=lambda x: x['start_time'])
+
+        segments = []
+        current_segment = None
+
+        for activity in sorted_activities:
+            if not activity['end_time']:
+                continue  # 진행 중인 활동은 스킵
+
+            start = datetime.fromisoformat(activity['start_time'])
+            end = datetime.fromisoformat(activity['end_time'])
+
+            # 하루 기준 초 단위 (0~86400)
+            start_seconds = start.hour * 3600 + start.minute * 60 + start.second
+            end_seconds = end.hour * 3600 + end.minute * 60 + end.second
+
+            tag_name = activity.get('tag_name', '미분류')
+            tag_color = activity.get('tag_color', '#CCCCCC')
+
+            # 같은 태그면 병합, 아니면 새 세그먼트
+            if current_segment and current_segment['tag_name'] == tag_name:
+                # 연속된 활동이면 end_seconds만 업데이트
+                current_segment['end_seconds'] = end_seconds
+            else:
+                # 새 세그먼트 시작
+                if current_segment:
+                    segments.append(current_segment)
+
+                current_segment = {
+                    'start_seconds': start_seconds,
+                    'end_seconds': end_seconds,
+                    'tag_name': tag_name,
+                    'tag_color': tag_color
+                }
+
+        # 마지막 세그먼트 추가
+        if current_segment:
+            segments.append(current_segment)
+
+        self.segments = segments
+        self.update()
+
+    def paintEvent(self, event):
+        """세로 타임라인 그리기"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        width = self.width()
+        height = self.height()
+
+        # 배경
+        painter.fillRect(0, 0, width, height, QColor(240, 240, 240))
+
+        # 시간 눈금 (3시간 간격)
+        painter.setPen(QPen(QColor(150, 150, 150), 1))
+        font = QFont()
+        font.setPointSize(8)
+        painter.setFont(font)
+
+        for hour in range(0, 25, 3):
+            y = int(hour / 24 * height)
+            # 눈금선
+            painter.drawLine(0, y, width, y)
+            # 시간 레이블
+            if hour < 24:
+                painter.drawText(5, y + 15, f"{hour:02d}:00")
+
+        # 세그먼트 그리기
+        bar_left = 60  # 시간 레이블 60px
+        bar_width = width - bar_left  # 나머지 전부 색상 바
+
+        for segment in self.segments:
+            start_ratio = segment['start_seconds'] / 86400  # 0~1
+            end_ratio = segment['end_seconds'] / 86400
+
+            y_start = int(start_ratio * height)
+            y_end = int(end_ratio * height)
+            segment_height = max(y_end - y_start, 1)  # 최소 1px
+
+            # 세그먼트 색상
+            color = QColor(segment['tag_color'])
+            painter.fillRect(bar_left, y_start, bar_width, segment_height, color)
+
+        # 바 테두리
+        painter.setPen(QPen(QColor(100, 100, 100), 1))
+        painter.drawRect(bar_left, 0, bar_width, height)
 
 
 class TimelineTab(QWidget):
@@ -29,17 +143,26 @@ class TimelineTab(QWidget):
         self.selected_tag = None  # None = 전체
 
         # UI 구성
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 필터
-        layout.addWidget(self.create_filters())
+        main_layout.addWidget(self.create_filters())
 
-        # 테이블
-        layout.addWidget(self.create_table())
+        # 타임라인 바 + 테이블 (수평 분할)
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(10)
 
-        self.setLayout(layout)
+        # 활동 테이블 (좌측)
+        content_layout.addWidget(self.create_table())
+
+        # 24시간 타임라인 바 (우측)
+        self.timeline_bar = TimelineBarWidget()
+        content_layout.addWidget(self.timeline_bar)
+
+        main_layout.addLayout(content_layout)
+        self.setLayout(main_layout)
 
         # 초기 데이터 로드
         self.load_timeline()
@@ -73,6 +196,12 @@ class TimelineTab(QWidget):
         layout.addWidget(self.tag_combo)
         layout.addWidget(refresh_btn)
         layout.addStretch()
+
+        # 총 활동 시간 레이블
+        self.total_time_label = QLabel("총 활동 시간: 0시간 0분")
+        self.total_time_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.total_time_label.setStyleSheet("color: #4CAF50;")
+        layout.addWidget(self.total_time_label)
 
         group.setLayout(layout)
         return group
@@ -130,11 +259,22 @@ class TimelineTab(QWidget):
 
             self.populate_table(activities)
 
+            # 총 활동 시간 계산 및 업데이트 (자리비움 제외)
+            tag_stats = self.db_manager.get_stats_by_tag(start, end)
+            total_seconds = sum(s['total_seconds'] or 0 for s in tag_stats if s['tag_name'] != '자리비움')
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            self.total_time_label.setText(f"총 활동 시간: {hours}시간 {minutes}분")
+
         except Exception as e:
             print(f"[TimelineTab] 타임라인 로드 오류: {e}")
 
     def populate_table(self, activities):
         """테이블에 활동 데이터 채우기"""
+        # 타임라인 바 업데이트
+        self.timeline_bar.set_activities(activities)
+
+        # 테이블 업데이트
         self.table.setRowCount(len(activities))
 
         for row, activity in enumerate(activities):

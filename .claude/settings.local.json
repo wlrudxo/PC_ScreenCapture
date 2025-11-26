@@ -16,7 +16,8 @@
       "Bash(sqlite3:*)",
       "Bash(git remote set-url:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(git fetch:*)"
     ],
     "deny": [],
     "ask": []

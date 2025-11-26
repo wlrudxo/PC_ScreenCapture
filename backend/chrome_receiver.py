@@ -38,21 +38,23 @@ class ChromeURLReceiver:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        # WebSocket 서버 시작
-        start_server = websockets.serve(self._handler, "localhost", self.port)
-        self.server = self.loop.run_until_complete(start_server)
-        print(f"[ChromeURLReceiver] WebSocket 서버 시작: ws://localhost:{self.port}")
+        # WebSocket 서버 시작 (websockets 13+ 호환)
+        async def serve():
+            self.server = await websockets.serve(self._handler, "localhost", self.port)
+            print(f"[ChromeURLReceiver] WebSocket 서버 시작: ws://localhost:{self.port}")
+            await self.server.wait_closed()
 
-        # 이벤트 루프 실행 (무한 대기)
-        self.loop.run_forever()
+        try:
+            self.loop.run_until_complete(serve())
+        except Exception as e:
+            print(f"[ChromeURLReceiver] 서버 종료: {e}")
 
-    async def _handler(self, websocket, path):
+    async def _handler(self, websocket):
         """
         Chrome Extension 연결 처리
 
         Args:
             websocket: WebSocket 연결 객체
-            path: 요청 경로
         """
         print(f"[ChromeURLReceiver] Chrome Extension 연결됨")
 

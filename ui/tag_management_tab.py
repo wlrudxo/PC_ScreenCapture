@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QListWidget, QTableWidget, QTableWidgetItem,
                             QGroupBox, QDialog, QLineEdit, QSpinBox, QCheckBox,
                             QComboBox, QColorDialog, QMessageBox, QHeaderView,
-                            QDialogButtonBox, QFormLayout)
+                            QDialogButtonBox, QFormLayout, QProgressDialog)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
@@ -27,6 +27,21 @@ class TagManagementTab(QWidget):
         layout = QVBoxLayout()
         layout.setSpacing(20)
         layout.setContentsMargins(20, 20, 20, 20)
+
+        # 미분류 재분류 버튼 (최상단)
+        reclassify_layout = QHBoxLayout()
+        reclassify_btn = QPushButton("미분류 항목 재분류")
+        reclassify_btn.setToolTip("현재 룰을 적용해 미분류 항목을 자동으로 분류합니다")
+        reclassify_btn.clicked.connect(self.on_reclassify_untagged)
+
+        reclassify_label = QLabel("현재 룰을 적용해 미분류 항목을 자동 분류")
+        reclassify_label.setStyleSheet("color: #888;")
+
+        reclassify_layout.addWidget(reclassify_btn)
+        reclassify_layout.addWidget(reclassify_label)
+        reclassify_layout.addStretch()
+
+        layout.addLayout(reclassify_layout)
 
         # 태그와 룰 관리 (가로로 배치)
         managers_layout = QHBoxLayout()
@@ -117,6 +132,74 @@ class TagManagementTab(QWidget):
         layout.addLayout(btn_layout)
         group.setLayout(layout)
         return group
+
+    # === 미분류 재분류 ===
+    def on_reclassify_untagged(self):
+        """미분류 항목 재분류"""
+        try:
+            # 1. 미분류 활동 개수 확인
+            unclassified_activities = self.db_manager.get_unclassified_activities()
+            count = len(unclassified_activities)
+
+            if count == 0:
+                QMessageBox.information(self, "미분류 재분류", "재분류할 미분류 항목이 없습니다.")
+                return
+
+            # 2. 확인 다이얼로그
+            reply = QMessageBox.question(
+                self, "미분류 재분류",
+                f"{count}개의 미분류 항목을 현재 룰에 따라 재분류하시겠습니까?\n\n"
+                "※ 수동으로 태그를 변경한 항목은 영향을 받지 않습니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # 3. 진행률 다이얼로그
+            progress = QProgressDialog("미분류 항목 재분류 중...", "취소", 0, count, self)
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+
+            # 4. 재분류 실행
+            reclassified_count = 0
+            for i, activity in enumerate(unclassified_activities):
+                if progress.wasCanceled():
+                    break
+
+                # 활동 정보로 룰 매칭
+                activity_info = {
+                    'process_name': activity['process_name'],
+                    'window_title': activity['window_title'],
+                    'chrome_url': activity['chrome_url'],
+                    'chrome_profile': activity['chrome_profile']
+                }
+
+                tag_id, rule_id = self.rule_engine.match(activity_info)
+
+                # 미분류가 아닌 경우만 업데이트 (룰이 매치된 경우)
+                unclassified_tag = self.db_manager.get_tag_by_name('미분류')
+                if tag_id != unclassified_tag['id']:
+                    self.db_manager.update_activity_classification(
+                        activity['id'], tag_id, rule_id
+                    )
+                    reclassified_count += 1
+
+                progress.setValue(i + 1)
+
+            progress.close()
+
+            # 5. 결과 표시
+            still_unclassified = count - reclassified_count
+            QMessageBox.information(
+                self, "재분류 완료",
+                f"재분류 완료!\n\n"
+                f"- 재분류됨: {reclassified_count}개\n"
+                f"- 여전히 미분류: {still_unclassified}개"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"재분류 중 오류 발생:\n{str(e)}")
 
     # === 태그 관리 ===
     def load_tags(self):

@@ -55,11 +55,13 @@ class MainWindow(QMainWindow):
         """탭 위젯 생성"""
         from ui.dashboard_tab import DashboardTab
         from ui.timeline_tab import TimelineTab
+        from ui.tag_management_tab import TagManagementTab
         from ui.settings_tab import SettingsTab
 
         self.tabs = QTabWidget()
         self.tabs.addTab(DashboardTab(self.db_manager), "📊 대시보드")
         self.tabs.addTab(TimelineTab(self.db_manager, self.monitor_engine), "⏱️ 타임라인")
+        self.tabs.addTab(TagManagementTab(self.db_manager, self.rule_engine), "🏷️ 태그 관리")
         self.tabs.addTab(SettingsTab(self.db_manager, self.rule_engine), "⚙️ 설정")
 
         self.setCentralWidget(self.tabs)

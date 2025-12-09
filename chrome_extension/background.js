@@ -37,11 +37,15 @@ function connectWebSocket() {
   };
 }
 
-// 탭 업데이트 감지
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // URL이나 제목이 변경되었을 때만 전송
+// 탭 업데이트 감지 (활성 탭만)
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // URL이나 제목이 변경되었을 때만
   if (changeInfo.url || changeInfo.title) {
-    sendUrlToServer(tabId, tab.url, tab.title);
+    // 현재 활성 탭인지 확인 (백그라운드 탭 무시)
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab && activeTab.id === tabId) {
+      sendUrlToServer(tabId, tab.url, tab.title);
+    }
   }
 });
 

@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, QTimer, QDate
 from PyQt6.QtGui import QFont
 
 from ui.date_navigation_widget import DateNavigationWidget
+from ui.utils import format_duration
 
 import matplotlib
 matplotlib.use('QtAgg')  # PyQt6 백엔드 사용
@@ -232,12 +233,11 @@ class DailyStatsWidget(QWidget):
         name_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
 
         # 사용 시간 + 퍼센트
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
+        time_str = format_duration(seconds)
         if percentage > 0:
-            time_label = QLabel(f"{hours}시간 {minutes}분 ({percentage:.1f}%)")
+            time_label = QLabel(f"{time_str} ({percentage:.1f}%)")
         else:
-            time_label = QLabel(f"{hours}시간 {minutes}분")
+            time_label = QLabel(time_str)
         time_label.setFont(QFont("Arial", 11))
 
         # 진행률 바
@@ -301,9 +301,7 @@ class DailyStatsWidget(QWidget):
 
     def update_total_time(self, total_seconds):
         """총 활동 시간 레이블 업데이트"""
-        hours = int(total_seconds // 3600)
-        minutes = int((total_seconds % 3600) // 60)
-        self.total_time_label.setText(f"총 활동 시간: {hours}시간 {minutes}분")
+        self.total_time_label.setText(f"총 활동 시간: {format_duration(total_seconds)}")
 
     def update_process_table(self, stats):
         """프로세스별 테이블 업데이트"""
@@ -315,10 +313,7 @@ class DailyStatsWidget(QWidget):
 
             # 사용 시간
             seconds = stat['total_seconds'] or 0
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            time_str = f"{hours}시간 {minutes}분"
-            self.process_table.setItem(row, 1, QTableWidgetItem(time_str))
+            self.process_table.setItem(row, 1, QTableWidgetItem(format_duration(seconds)))
 
             # 활동 수
             self.process_table.setItem(row, 2, QTableWidgetItem(str(stat['activity_count'])))
@@ -627,20 +622,15 @@ class PeriodStatsWidget(QWidget):
             row_total = 0
             for col, tag in enumerate(sorted_tags):
                 seconds = all_data[date].get(tag, 0)
-                hours = int(seconds // 3600)
-                minutes = int((seconds % 3600) // 60)
-
-                time_str = f"{hours}h {minutes}m" if seconds > 0 else "-"
+                time_str = format_duration(seconds, "short") if seconds > 0 else "-"
                 self.stats_table.setItem(row, col + 1, QTableWidgetItem(time_str))
 
                 row_total += seconds
                 total_by_tag[tag] += seconds
 
             # 총계 열
-            hours = int(row_total // 3600)
-            minutes = int((row_total % 3600) // 60)
-            total_str = f"{hours}h {minutes}m"
-            self.stats_table.setItem(row, len(sorted_tags) + 1, QTableWidgetItem(total_str))
+            self.stats_table.setItem(row, len(sorted_tags) + 1,
+                                     QTableWidgetItem(format_duration(row_total, "short")))
 
         # 마지막 행: 총계
         last_row = len(date_range)
@@ -649,20 +639,14 @@ class PeriodStatsWidget(QWidget):
         grand_total = 0
         for col, tag in enumerate(sorted_tags):
             seconds = total_by_tag[tag]
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-
-            time_str = f"{hours}h {minutes}m" if seconds > 0 else "-"
+            time_str = format_duration(seconds, "short") if seconds > 0 else "-"
             item = QTableWidgetItem(time_str)
             item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
             self.stats_table.setItem(last_row, col + 1, item)
-
             grand_total += seconds
 
         # 전체 총계
-        hours = int(grand_total // 3600)
-        minutes = int((grand_total % 3600) // 60)
-        total_item = QTableWidgetItem(f"{hours}h {minutes}m")
+        total_item = QTableWidgetItem(format_duration(grand_total, "short"))
         total_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         self.stats_table.setItem(last_row, len(sorted_tags) + 1, total_item)
 
@@ -683,18 +667,14 @@ class PeriodStatsWidget(QWidget):
                 weekday_count += 1
 
         # 총 활동 시간 업데이트
-        hours = int(total_seconds // 3600)
-        minutes = int((total_seconds % 3600) // 60)
-        self.total_time_label.setText(f"총 활동 시간: {hours}시간 {minutes}분")
+        self.total_time_label.setText(f"총 활동 시간: {format_duration(total_seconds)}")
 
         # 주중 평균 활동 시간 업데이트
         if weekday_count > 0:
             avg_seconds = weekday_seconds / weekday_count
-            hours = int(avg_seconds // 3600)
-            minutes = int((avg_seconds % 3600) // 60)
-            self.weekday_avg_label.setText(f"주중 평균 활동 시간: {hours}시간 {minutes}분")
+            self.weekday_avg_label.setText(f"주중 평균 활동 시간: {format_duration(avg_seconds)}")
         else:
-            self.weekday_avg_label.setText("주중 평균 활동 시간: 0시간 0분")
+            self.weekday_avg_label.setText(f"주중 평균 활동 시간: {format_duration(0)}")
 
     def closeEvent(self, event):
         """위젯 닫기 전 리소스 정리"""

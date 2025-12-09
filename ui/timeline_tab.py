@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, QDate, pyqtSlot, QRect
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
 
 from ui.date_navigation_widget import DateNavigationWidget
+from ui.utils import format_duration
 
 
 class TimelineBarWidget(QWidget):
@@ -262,9 +263,7 @@ class TimelineTab(QWidget):
             # 총 활동 시간 계산 및 업데이트 (자리비움 제외)
             tag_stats = self.db_manager.get_stats_by_tag(start, end)
             total_seconds = sum(s['total_seconds'] or 0 for s in tag_stats if s['tag_name'] != '자리비움')
-            hours = int(total_seconds // 3600)
-            minutes = int((total_seconds % 3600) // 60)
-            self.total_time_label.setText(f"총 활동 시간: {hours}시간 {minutes}분")
+            self.total_time_label.setText(f"총 활동 시간: {format_duration(total_seconds)}")
 
         except Exception as e:
             print(f"[TimelineTab] 타임라인 로드 오류: {e}")

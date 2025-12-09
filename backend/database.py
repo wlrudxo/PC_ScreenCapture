@@ -142,6 +142,14 @@ class DatabaseManager:
         except Exception:
             pass
 
+        # settings 테이블 (전역 설정)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
             ('업무', '#4CAF50'),
@@ -488,6 +496,22 @@ class DatabaseManager:
             SET tag_id = ?, rule_id = ?
             WHERE id = ?
         """, (tag_id, rule_id, activity_id))
+        self.conn.commit()
+
+    # === 전역 설정 ===
+    def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """설정 값 조회"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row['value'] if row else default
+
+    def set_setting(self, key: str, value: str):
+        """설정 값 저장"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)
+        """, (key, value))
         self.conn.commit()
 
     def close(self):

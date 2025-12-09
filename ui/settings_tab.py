@@ -4,8 +4,10 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QGroupBox, QDialog, QCheckBox,
                             QMessageBox, QProgressDialog, QFileDialog,
-                            QDialogButtonBox, QFormLayout)
+                            QDialogButtonBox, QFormLayout, QLineEdit)
 from PyQt6.QtCore import Qt
+import winsound
+from pathlib import Path
 from datetime import datetime
 
 from backend.auto_start import AutoStartManager
@@ -65,8 +67,41 @@ class SettingsTab(QWidget):
         reclassify_layout.addWidget(reclassify_label)
         reclassify_layout.addStretch()
 
+        # 알림음 설정
+        sound_layout = QHBoxLayout()
+        self.sound_checkbox = QCheckBox("알림음 사용")
+        self.sound_checkbox.setChecked(
+            self.db_manager.get_setting('alert_sound_enabled', '0') == '1'
+        )
+        self.sound_checkbox.stateChanged.connect(self.on_sound_enabled_changed)
+
+        self.sound_path_edit = QLineEdit()
+        self.sound_path_edit.setReadOnly(True)
+        self.sound_path_edit.setPlaceholderText("(시스템 기본음 사용)")
+        current_sound = self.db_manager.get_setting('alert_sound_file', '')
+        if current_sound:
+            self.sound_path_edit.setText(current_sound)
+
+        sound_browse_btn = QPushButton("파일 선택")
+        sound_browse_btn.setToolTip("WAV 파일만 지원됩니다")
+        sound_browse_btn.clicked.connect(self.on_browse_sound_file)
+
+        sound_test_btn = QPushButton("▶ 테스트")
+        sound_test_btn.clicked.connect(self.on_test_sound)
+
+        sound_clear_btn = QPushButton("초기화")
+        sound_clear_btn.setToolTip("시스템 기본음으로 되돌리기")
+        sound_clear_btn.clicked.connect(self.on_clear_sound_file)
+
+        sound_layout.addWidget(self.sound_checkbox)
+        sound_layout.addWidget(self.sound_path_edit, 1)
+        sound_layout.addWidget(sound_browse_btn)
+        sound_layout.addWidget(sound_test_btn)
+        sound_layout.addWidget(sound_clear_btn)
+
         layout.addWidget(self.auto_start_checkbox)
         layout.addLayout(reclassify_layout)
+        layout.addLayout(sound_layout)
         layout.addStretch()
 
         group.setLayout(layout)
@@ -151,6 +186,46 @@ class SettingsTab(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "오류", f"재분류 중 오류 발생:\n{str(e)}")
+
+    def on_sound_enabled_changed(self, state):
+        """알림음 사용 설정 변경"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.db_manager.set_setting('alert_sound_enabled', '1' if enabled else '0')
+        print(f"[SettingsTab] 알림음 {'활성화' if enabled else '비활성화'}")
+
+    def on_browse_sound_file(self):
+        """알림음 파일 선택"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "알림음 파일 선택",
+            "",
+            "WAV Files (*.wav);;All Files (*)"
+        )
+
+        if file_path:
+            self.sound_path_edit.setText(file_path)
+            self.db_manager.set_setting('alert_sound_file', file_path)
+            print(f"[SettingsTab] 알림음 파일 설정: {file_path}")
+
+    def on_test_sound(self):
+        """알림음 테스트"""
+        file_path = self.sound_path_edit.text()
+
+        if not file_path:
+            # 시스템 기본음
+            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+        else:
+            sound_path = Path(file_path)
+            if sound_path.exists() and sound_path.suffix.lower() == '.wav':
+                winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+            else:
+                QMessageBox.warning(self, "오류", "파일이 없거나 지원되지 않는 형식입니다.")
+
+    def on_clear_sound_file(self):
+        """알림음 파일 초기화 (시스템 기본음)"""
+        self.sound_path_edit.clear()
+        self.db_manager.set_setting('alert_sound_file', '')
+        print("[SettingsTab] 알림음 초기화 (시스템 기본음)")
 
     def create_data_management(self):
         """데이터 관리 (Import/Export) UI"""

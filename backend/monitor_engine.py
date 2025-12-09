@@ -43,7 +43,9 @@ class MonitorEngine(QThread):
         self.window_tracker = WindowTracker()
         self.screen_detector = ScreenDetector()
         self.chrome_receiver = ChromeURLReceiver(port=8766)
-        self.notification_manager = NotificationManager()
+        self.notification_manager = NotificationManager(
+            get_sound_settings=self._get_sound_settings
+        )
 
         # 상태 변수
         self.current_activity_id: Optional[int] = None
@@ -239,6 +241,21 @@ class MonitorEngine(QThread):
                 )
         except Exception as e:
             print(f"[MonitorEngine] 알림 체크 오류: {e}")
+
+    def _get_sound_settings(self) -> tuple:
+        """
+        알림음 설정 조회
+
+        Returns:
+            (enabled: bool, file_path: str or None)
+        """
+        try:
+            enabled = self.db_manager.get_setting('alert_sound_enabled', '0') == '1'
+            file_path = self.db_manager.get_setting('alert_sound_file', None)
+            return (enabled, file_path)
+        except Exception as e:
+            print(f"[MonitorEngine] 사운드 설정 조회 오류: {e}")
+            return (False, None)
 
     def end_current_activity(self):
         """현재 활동 종료"""

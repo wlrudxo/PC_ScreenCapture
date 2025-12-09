@@ -3,7 +3,9 @@
 """
 import time
 import threading
-from typing import Optional, Dict
+import winsound
+from pathlib import Path
+from typing import Optional, Dict, Callable
 
 
 class NotificationManager:
@@ -12,21 +14,25 @@ class NotificationManager:
 
     - winotify 라이브러리 사용
     - 쿨다운 기능으로 반복 알림 방지
+    - 커스텀 알림음 지원 (wav 파일)
     """
 
     # 기본 쿨다운 시간 (초)
     DEFAULT_COOLDOWN = 30
 
-    def __init__(self, app_name: str = "Activity Tracker", cooldown: int = None):
+    def __init__(self, app_name: str = "Activity Tracker", cooldown: int = None,
+                 get_sound_settings: Optional[Callable[[], tuple]] = None):
         """
         알림 매니저 초기화
 
         Args:
             app_name: 알림에 표시될 앱 이름
             cooldown: 같은 태그 알림 간 최소 간격 (초)
+            get_sound_settings: 사운드 설정 조회 콜백 -> (enabled: bool, file_path: str)
         """
         self.app_name = app_name
         self.cooldown = cooldown or self.DEFAULT_COOLDOWN
+        self.get_sound_settings = get_sound_settings
 
         # 태그별 마지막 알림 시간 기록 {tag_id: timestamp}
         self._last_notification: Dict[int, float] = {}
@@ -116,15 +122,50 @@ class NotificationManager:
                 duration="short"  # short(5초) or long(25초)
             )
 
-            # 아이콘 설정 (있으면)
-            if icon_path:
-                toast.set_audio(self._audio.Default, loop=False)
+            # winotify 기본 사운드 비활성화
+            # set_audio(Silent, loop=False)는 토스트를 막는 버그가 있어서
+            # loop 파라미터 없이 시도
+            try:
+                toast.set_audio(self._audio.Silent)
+            except Exception:
+                pass
 
             toast.show()
             print(f"[NotificationManager] 알림 표시: {title} - {message}")
 
+            # 커스텀 사운드 재생
+            self._play_custom_sound()
+
         except Exception as e:
             print(f"[NotificationManager] 알림 표시 실패: {e}")
+
+    def _play_custom_sound(self):
+        """커스텀 알림음 재생"""
+        if not self.get_sound_settings:
+            return
+
+        try:
+            enabled, file_path = self.get_sound_settings()
+
+            if not enabled:
+                return
+
+            if not file_path:
+                # 파일 미지정 시 시스템 기본음
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                return
+
+            # wav 파일 재생
+            sound_path = Path(file_path)
+            if sound_path.exists() and sound_path.suffix.lower() == '.wav':
+                winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+                print(f"[NotificationManager] 사운드 재생: {file_path}")
+            else:
+                print(f"[NotificationManager] 사운드 파일 없음 또는 지원되지 않는 형식: {file_path}")
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+
+        except Exception as e:
+            print(f"[NotificationManager] 사운드 재생 실패: {e}")
 
     def set_cooldown(self, seconds: int):
         """쿨다운 시간 설정"""

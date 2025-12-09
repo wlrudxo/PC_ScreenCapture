@@ -8,6 +8,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from backend.window_tracker import WindowTracker
 from backend.screen_detector import ScreenDetector
 from backend.chrome_receiver import ChromeURLReceiver
+from backend.notification_manager import NotificationManager
 
 
 class MonitorEngine(QThread):
@@ -42,6 +43,7 @@ class MonitorEngine(QThread):
         self.window_tracker = WindowTracker()
         self.screen_detector = ScreenDetector()
         self.chrome_receiver = ChromeURLReceiver(port=8766)
+        self.notification_manager = NotificationManager()
 
         # 상태 변수
         self.current_activity_id: Optional[int] = None
@@ -185,7 +187,7 @@ class MonitorEngine(QThread):
 
     def start_new_activity(self, info: Dict[str, Any]):
         """
-        새 활동 시작 → DB 저장
+        새 활동 시작 → DB 저장 → 알림 체크
 
         Args:
             info: 활동 정보
@@ -209,8 +211,34 @@ class MonitorEngine(QThread):
 
             print(f"[MonitorEngine] 새 활동 시작: {info['process_name']} - {info['window_title'][:50]}")
 
+            # 태그 알림 체크
+            self._check_tag_alert(tag_id)
+
         except Exception as e:
             print(f"[MonitorEngine] 활동 저장 오류: {e}")
+
+    def _check_tag_alert(self, tag_id: int):
+        """
+        태그 알림 설정 확인 및 알림 표시
+
+        Args:
+            tag_id: 태그 ID
+        """
+        try:
+            tag = self.db_manager.get_tag_by_id(tag_id)
+            if tag and tag.get('alert_enabled'):
+                # 커스텀 메시지 또는 기본 메시지
+                message = tag.get('alert_message') or f"'{tag['name']}' 활동이 감지되었습니다!"
+                # 태그별 쿨다운 (없으면 기본값 30초)
+                cooldown = tag.get('alert_cooldown') or 30
+                self.notification_manager.show(
+                    tag_id=tag_id,
+                    title=f"⚠️ {tag['name']}",
+                    message=message,
+                    cooldown=cooldown
+                )
+        except Exception as e:
+            print(f"[MonitorEngine] 알림 체크 오류: {e}")
 
     def end_current_activity(self):
         """현재 활동 종료"""

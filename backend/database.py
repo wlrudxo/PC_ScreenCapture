@@ -125,6 +125,23 @@ class DatabaseManager:
             # 이미 컬럼이 존재하면 무시
             pass
 
+        # 태그 알림 기능 컬럼 추가 (마이그레이션)
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN alert_enabled BOOLEAN DEFAULT 0")
+            self.conn.commit()
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN alert_message TEXT")
+            self.conn.commit()
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN alert_cooldown INTEGER DEFAULT 30")
+            self.conn.commit()
+        except Exception:
+            pass
+
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
             ('업무', '#4CAF50'),
@@ -193,7 +210,10 @@ class DatabaseManager:
         return cursor.lastrowid
 
     def update_tag(self, tag_id: int, name: Optional[str] = None,
-                   color: Optional[str] = None):
+                   color: Optional[str] = None,
+                   alert_enabled: Optional[bool] = None,
+                   alert_message: Optional[str] = None,
+                   alert_cooldown: Optional[int] = None):
         """태그 수정"""
         cursor = self.conn.cursor()
         updates = []
@@ -205,6 +225,15 @@ class DatabaseManager:
         if color:
             updates.append("color = ?")
             values.append(color)
+        if alert_enabled is not None:
+            updates.append("alert_enabled = ?")
+            values.append(1 if alert_enabled else 0)
+        if alert_message is not None:
+            updates.append("alert_message = ?")
+            values.append(alert_message if alert_message else None)
+        if alert_cooldown is not None:
+            updates.append("alert_cooldown = ?")
+            values.append(max(1, alert_cooldown))  # 최소 1초
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")

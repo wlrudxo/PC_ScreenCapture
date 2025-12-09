@@ -471,7 +471,9 @@ class SettingsTab(QWidget):
         try:
             tags = self.db_manager.get_all_tags()
             for tag in tags:
-                item_text = f"{tag['name']} ({tag['color']})"
+                # 알림 설정 표시
+                alert_icon = "🔔" if tag.get('alert_enabled') else ""
+                item_text = f"{alert_icon} {tag['name']} ({tag['color']})".strip()
                 self.tag_list.addItem(item_text)
                 # 태그 ID를 아이템 데이터로 저장
                 self.tag_list.item(self.tag_list.count() - 1).setData(Qt.ItemDataRole.UserRole, tag)
@@ -482,11 +484,18 @@ class SettingsTab(QWidget):
         """태그 추가"""
         dialog = TagEditDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            name, color = dialog.get_tag_data()
+            data = dialog.get_tag_data()
             try:
-                self.db_manager.create_tag(name, color)
+                tag_id = self.db_manager.create_tag(data['name'], data['color'])
+                # 알림 설정 업데이트
+                self.db_manager.update_tag(
+                    tag_id,
+                    alert_enabled=data['alert_enabled'],
+                    alert_message=data['alert_message'],
+                    alert_cooldown=data['alert_cooldown']
+                )
                 self.load_tags()
-                print(f"[SettingsTab] 태그 추가됨: {name}")
+                print(f"[SettingsTab] 태그 추가됨: {data['name']}")
             except Exception as e:
                 QMessageBox.warning(self, "오류", f"태그 추가 실패: {e}")
 
@@ -500,11 +509,18 @@ class SettingsTab(QWidget):
         tag_data = current_item.data(Qt.ItemDataRole.UserRole)
         dialog = TagEditDialog(self, tag_data)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            name, color = dialog.get_tag_data()
+            data = dialog.get_tag_data()
             try:
-                self.db_manager.update_tag(tag_data['id'], name, color)
+                self.db_manager.update_tag(
+                    tag_data['id'],
+                    name=data['name'],
+                    color=data['color'],
+                    alert_enabled=data['alert_enabled'],
+                    alert_message=data['alert_message'],
+                    alert_cooldown=data['alert_cooldown']
+                )
                 self.load_tags()
-                print(f"[SettingsTab] 태그 수정됨: {name}")
+                print(f"[SettingsTab] 태그 수정됨: {data['name']}")
             except Exception as e:
                 QMessageBox.warning(self, "오류", f"태그 수정 실패: {e}")
 
@@ -660,7 +676,7 @@ class TagEditDialog(QDialog):
         self.selected_color = tag_data['color'] if tag_data else "#4CAF50"
 
         self.setWindowTitle("태그 편집" if tag_data else "태그 추가")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
 
         layout = QFormLayout()
 
@@ -684,6 +700,48 @@ class TagEditDialog(QDialog):
         color_layout.addStretch()
 
         layout.addRow("색상:", color_layout)
+
+        # 구분선
+        layout.addRow(QLabel("<hr>"))
+
+        # 알림 설정 헤더
+        alert_header = QLabel("🔔 알림 설정")
+        alert_header.setStyleSheet("font-weight: bold; color: #007acc;")
+        layout.addRow("", alert_header)
+
+        # 알림 활성화 체크박스
+        self.alert_enabled_check = QCheckBox("이 태그 활동 시 알림 표시")
+        if tag_data:
+            self.alert_enabled_check.setChecked(bool(tag_data.get('alert_enabled', 0)))
+        layout.addRow("", self.alert_enabled_check)
+
+        # 알림 메시지
+        self.alert_message_edit = QLineEdit()
+        self.alert_message_edit.setPlaceholderText("예: 딴짓하지 말고 일해!!")
+        if tag_data and tag_data.get('alert_message'):
+            self.alert_message_edit.setText(tag_data['alert_message'])
+        layout.addRow("알림 메시지:", self.alert_message_edit)
+
+        # 쿨다운 설정
+        cooldown_layout = QHBoxLayout()
+        self.alert_cooldown_spin = QSpinBox()
+        self.alert_cooldown_spin.setRange(1, 3600)  # 1초 ~ 1시간
+        self.alert_cooldown_spin.setValue(tag_data.get('alert_cooldown', 30) if tag_data else 30)
+        self.alert_cooldown_spin.setSuffix(" 초")
+        self.alert_cooldown_spin.setMinimumWidth(100)
+
+        cooldown_hint = QLabel("(1초 = 매번, 30초 = 권장)")
+        cooldown_hint.setStyleSheet("color: #888; font-size: 9pt;")
+
+        cooldown_layout.addWidget(self.alert_cooldown_spin)
+        cooldown_layout.addWidget(cooldown_hint)
+        cooldown_layout.addStretch()
+        layout.addRow("알림 쿨다운:", cooldown_layout)
+
+        # 알림 힌트
+        alert_hint = QLabel("💡 메시지 비워두면 기본 메시지 표시")
+        alert_hint.setStyleSheet("color: #888; font-size: 9pt;")
+        layout.addRow("", alert_hint)
 
         # 버튼
         buttons = QDialogButtonBox(
@@ -716,7 +774,13 @@ class TagEditDialog(QDialog):
 
     def get_tag_data(self):
         """태그 데이터 반환"""
-        return self.name_edit.text().strip(), self.selected_color
+        return {
+            'name': self.name_edit.text().strip(),
+            'color': self.selected_color,
+            'alert_enabled': self.alert_enabled_check.isChecked(),
+            'alert_message': self.alert_message_edit.text().strip() or None,
+            'alert_cooldown': self.alert_cooldown_spin.value()
+        }
 
 
 class RuleEditDialog(QDialog):

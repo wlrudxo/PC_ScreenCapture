@@ -39,7 +39,7 @@ class SettingsTab(QWidget):
         # 일반 설정
         layout.addWidget(self.create_general_settings())
 
-        # 알림음 설정
+        # 알림 설정
         layout.addWidget(self.create_sound_settings())
 
         # 데이터 관리 (Import/Export)
@@ -81,9 +81,16 @@ class SettingsTab(QWidget):
         return group
 
     def create_sound_settings(self):
-        """알림음 설정 UI"""
-        group = QGroupBox("알림음 설정")
+        """알림 설정 UI"""
+        group = QGroupBox("알림 설정")
         layout = QVBoxLayout()
+
+        # 윈도우 토스트 사용 체크박스
+        self.toast_checkbox = QCheckBox("윈도우 토스트 사용")
+        self.toast_checkbox.setChecked(
+            self.db_manager.get_setting('alert_toast_enabled', '1') == '1'
+        )
+        self.toast_checkbox.stateChanged.connect(self.on_toast_enabled_changed)
 
         # 알림음 사용 체크박스
         self.sound_checkbox = QCheckBox("알림음 사용")
@@ -124,6 +131,7 @@ class SettingsTab(QWidget):
         hint_label = QLabel("💡 MP3, WAV, OGG, FLAC 지원 (WAV로 자동 변환). 사운드가 없으면 시스템 기본음 재생.")
         hint_label.setStyleSheet("color: #888; font-size: 9pt;")
 
+        layout.addWidget(self.toast_checkbox)
         layout.addWidget(self.sound_checkbox)
         layout.addWidget(self.random_checkbox)
         layout.addWidget(self.sound_list)
@@ -227,6 +235,12 @@ class SettingsTab(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "오류", f"재분류 중 오류 발생:\n{str(e)}")
+
+    def on_toast_enabled_changed(self, state):
+        """윈도우 토스트 사용 설정 변경"""
+        enabled = state == Qt.CheckState.Checked.value
+        self.db_manager.set_setting('alert_toast_enabled', '1' if enabled else '0')
+        print(f"[SettingsTab] 윈도우 토스트 {'활성화' if enabled else '비활성화'}")
 
     def on_sound_enabled_changed(self, state):
         """알림음 사용 설정 변경"""

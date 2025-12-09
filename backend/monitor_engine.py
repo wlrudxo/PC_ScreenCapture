@@ -44,7 +44,8 @@ class MonitorEngine(QThread):
         self.screen_detector = ScreenDetector()
         self.chrome_receiver = ChromeURLReceiver(port=8766)
         self.notification_manager = NotificationManager(
-            get_sound_settings=self._get_sound_settings
+            get_sound_settings=self._get_sound_settings,
+            get_toast_enabled=self._get_toast_enabled
         )
 
         # 상태 변수
@@ -241,6 +242,19 @@ class MonitorEngine(QThread):
                 )
         except Exception as e:
             print(f"[MonitorEngine] 알림 체크 오류: {e}")
+
+    def _get_toast_enabled(self) -> bool:
+        """
+        윈도우 토스트 활성화 여부 조회
+
+        Returns:
+            bool: 활성화 여부 (기본값: True)
+        """
+        try:
+            return self.db_manager.get_setting('alert_toast_enabled', '1') == '1'
+        except Exception as e:
+            print(f"[MonitorEngine] 토스트 설정 조회 오류: {e}")
+            return True
 
     def _get_sound_settings(self) -> tuple:
         """

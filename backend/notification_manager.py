@@ -21,7 +21,8 @@ class NotificationManager:
     DEFAULT_COOLDOWN = 30
 
     def __init__(self, app_name: str = "Activity Tracker", cooldown: int = None,
-                 get_sound_settings: Optional[Callable[[], tuple]] = None):
+                 get_sound_settings: Optional[Callable[[], tuple]] = None,
+                 get_toast_enabled: Optional[Callable[[], bool]] = None):
         """
         알림 매니저 초기화
 
@@ -29,10 +30,12 @@ class NotificationManager:
             app_name: 알림에 표시될 앱 이름
             cooldown: 같은 태그 알림 간 최소 간격 (초)
             get_sound_settings: 사운드 설정 조회 콜백 -> (enabled: bool, file_path: str)
+            get_toast_enabled: 토스트 활성화 여부 조회 콜백 -> bool
         """
         self.app_name = app_name
         self.cooldown = cooldown or self.DEFAULT_COOLDOWN
         self.get_sound_settings = get_sound_settings
+        self.get_toast_enabled = get_toast_enabled
 
         # 태그별 마지막 알림 시간 기록 {tag_id: timestamp}
         self._last_notification: Dict[int, float] = {}
@@ -90,9 +93,18 @@ class NotificationManager:
         Returns:
             True: 알림 표시됨, False: 쿨다운 또는 비활성화
         """
-        if not self._available:
-            print(f"[NotificationManager] 알림 비활성화 상태 - {title}: {message}")
+        # 토스트/사운드 설정 확인
+        toast_enabled = self._is_toast_enabled()
+        sound_enabled = self._is_sound_enabled()
+
+        # 둘 다 off면 알림 없음
+        if not toast_enabled and not sound_enabled:
+            print(f"[NotificationManager] 토스트/사운드 모두 비활성화 - 알림 없음")
             return False
+
+        if not self._available and toast_enabled:
+            print(f"[NotificationManager] winotify 미설치 - 토스트 불가")
+            # 사운드만 가능하면 계속 진행
 
         if not self._can_notify(tag_id, cooldown):
             print(f"[NotificationManager] 쿨다운 중 (tag_id={tag_id})")
@@ -102,7 +114,7 @@ class NotificationManager:
             # 별도 스레드에서 알림 표시 (블로킹 방지)
             threading.Thread(
                 target=self._show_notification,
-                args=(title, message, icon_path),
+                args=(title, message, icon_path, toast_enabled),
                 daemon=True
             ).start()
             return True
@@ -111,27 +123,51 @@ class NotificationManager:
             print(f"[NotificationManager] 알림 오류: {e}")
             return False
 
-    def _show_notification(self, title: str, message: str,
-                          icon_path: Optional[str] = None):
-        """실제 알림 표시 (별도 스레드)"""
-        try:
-            toast = self._Notification(
-                app_id=self.app_name,
-                title=title,
-                msg=message,
-                duration="short"  # short(5초) or long(25초)
-            )
-
-            # winotify 기본 사운드 비활성화
-            # set_audio(Silent, loop=False)는 토스트를 막는 버그가 있어서
-            # loop 파라미터 없이 시도
+    def _is_toast_enabled(self) -> bool:
+        """토스트 활성화 여부"""
+        if self.get_toast_enabled:
             try:
-                toast.set_audio(self._audio.Silent)
+                return self.get_toast_enabled()
             except Exception:
                 pass
+        return True  # 기본값: 활성화
 
-            toast.show()
-            print(f"[NotificationManager] 알림 표시: {title} - {message}")
+    def _is_sound_enabled(self) -> bool:
+        """사운드 활성화 여부"""
+        if self.get_sound_settings:
+            try:
+                enabled, _ = self.get_sound_settings()
+                return enabled
+            except Exception:
+                pass
+        return False  # 기본값: 비활성화
+
+    def _show_notification(self, title: str, message: str,
+                          icon_path: Optional[str] = None,
+                          toast_enabled: bool = True):
+        """실제 알림 표시 (별도 스레드)"""
+        try:
+            # 토스트 표시 (활성화된 경우에만)
+            if toast_enabled and self._available:
+                toast = self._Notification(
+                    app_id=self.app_name,
+                    title=title,
+                    msg=message,
+                    duration="short"  # short(5초) or long(25초)
+                )
+
+                # winotify 기본 사운드 비활성화
+                # set_audio(Silent, loop=False)는 토스트를 막는 버그가 있어서
+                # loop 파라미터 없이 시도
+                try:
+                    toast.set_audio(self._audio.Silent)
+                except Exception:
+                    pass
+
+                toast.show()
+                print(f"[NotificationManager] 토스트 표시: {title} - {message}")
+            else:
+                print(f"[NotificationManager] 토스트 비활성화 - 사운드만 재생")
 
             # 커스텀 사운드 재생
             self._play_custom_sound()

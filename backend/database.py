@@ -150,6 +150,16 @@ class DatabaseManager:
             )
         """)
 
+        # alert_sounds 테이블 (알림음 목록)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alert_sounds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
             ('업무', '#4CAF50'),
@@ -512,6 +522,35 @@ class DatabaseManager:
         cursor.execute("""
             INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)
         """, (key, value))
+        self.conn.commit()
+
+    # === 알림음 관리 ===
+    def get_all_alert_sounds(self) -> List[Dict[str, Any]]:
+        """모든 알림음 조회"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alert_sounds ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_alert_sound_by_id(self, sound_id: int) -> Optional[Dict[str, Any]]:
+        """ID로 알림음 조회"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alert_sounds WHERE id = ?", (sound_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def add_alert_sound(self, name: str, file_path: str) -> int:
+        """알림음 추가"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO alert_sounds (name, file_path) VALUES (?, ?)
+        """, (name, file_path))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def delete_alert_sound(self, sound_id: int):
+        """알림음 삭제"""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM alert_sounds WHERE id = ?", (sound_id,))
         self.conn.commit()
 
     def close(self):

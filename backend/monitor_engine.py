@@ -249,10 +249,35 @@ class MonitorEngine(QThread):
         Returns:
             (enabled: bool, file_path: str or None)
         """
+        import random
+
         try:
             enabled = self.db_manager.get_setting('alert_sound_enabled', '0') == '1'
-            file_path = self.db_manager.get_setting('alert_sound_file', None)
-            return (enabled, file_path)
+            if not enabled:
+                return (False, None)
+
+            # 재생 모드 확인 (single/random)
+            play_mode = self.db_manager.get_setting('alert_sound_mode', 'single')
+            sounds = self.db_manager.get_all_alert_sounds()
+
+            if not sounds:
+                # 사운드 목록이 비어있으면 시스템 기본음
+                return (True, None)
+
+            if play_mode == 'random':
+                # 랜덤 선택
+                selected = random.choice(sounds)
+                return (True, selected['file_path'])
+            else:
+                # 단일 선택 모드
+                selected_id = self.db_manager.get_setting('alert_sound_selected', None)
+                if selected_id:
+                    sound = self.db_manager.get_alert_sound_by_id(int(selected_id))
+                    if sound:
+                        return (True, sound['file_path'])
+                # 선택된 사운드가 없으면 첫 번째 사운드
+                return (True, sounds[0]['file_path'])
+
         except Exception as e:
             print(f"[MonitorEngine] 사운드 설정 조회 오류: {e}")
             return (False, None)

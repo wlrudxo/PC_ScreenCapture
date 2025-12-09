@@ -68,3 +68,10 @@ class AppConfig:
     def get_log_path():
         """로그 파일 경로"""
         return AppConfig.get_log_dir() / "app.log"
+
+    @staticmethod
+    def get_sounds_dir():
+        """알림음 저장 디렉토리"""
+        sounds_dir = AppConfig.get_app_dir() / "sounds"
+        sounds_dir.mkdir(exist_ok=True)
+        return sounds_dir

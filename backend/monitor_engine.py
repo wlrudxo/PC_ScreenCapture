@@ -52,6 +52,7 @@ class MonitorEngine(QThread):
         self.current_activity_id: Optional[int] = None
         self.last_activity_info: Optional[Dict[str, Any]] = None
         self.running = False
+        self._last_played_sound_id: Optional[int] = None  # 직전 재생된 사운드 ID
 
         # 프로그램 시작 시 종료되지 않은 활동 정리
         self.db_manager.cleanup_unfinished_activities()
@@ -279,8 +280,13 @@ class MonitorEngine(QThread):
                 return (True, None)
 
             if play_mode == 'random':
-                # 랜덤 선택
-                selected = random.choice(sounds)
+                # 랜덤 선택 (2개 이상이면 직전과 다른 사운드 선택)
+                if len(sounds) >= 2 and self._last_played_sound_id is not None:
+                    candidates = [s for s in sounds if s['id'] != self._last_played_sound_id]
+                    selected = random.choice(candidates) if candidates else random.choice(sounds)
+                else:
+                    selected = random.choice(sounds)
+                self._last_played_sound_id = selected['id']
                 return (True, selected['file_path'])
             else:
                 # 단일 선택 모드

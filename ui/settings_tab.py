@@ -3,18 +3,13 @@
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QGroupBox, QDialog, QCheckBox,
-                            QMessageBox, QProgressDialog, QFileDialog,
-                            QDialogButtonBox, QFormLayout, QLineEdit,
-                            QListWidget, QListWidgetItem, QInputDialog)
+                            QMessageBox, QFileDialog, QDialogButtonBox,
+                            QFormLayout)
 from PyQt6.QtCore import Qt
-import winsound
-import uuid
-from pathlib import Path
 from datetime import datetime
 
 from backend.auto_start import AutoStartManager
 from backend.import_export import ImportExportManager
-from backend.config import AppConfig
 
 
 class SettingsTab(QWidget):
@@ -38,9 +33,6 @@ class SettingsTab(QWidget):
 
         # 일반 설정
         layout.addWidget(self.create_general_settings())
-
-        # 알림 설정
-        layout.addWidget(self.create_sound_settings())
 
         # 데이터 관리 (Import/Export)
         layout.addWidget(self.create_data_management())
@@ -66,82 +58,6 @@ class SettingsTab(QWidget):
         group.setLayout(layout)
         return group
 
-    def create_sound_settings(self):
-        """알림 설정 UI"""
-        group = QGroupBox("알림 설정")
-        layout = QVBoxLayout()
-
-        # 윈도우 토스트 사용 체크박스
-        self.toast_checkbox = QCheckBox("윈도우 토스트 사용")
-        self.toast_checkbox.setChecked(
-            self.db_manager.get_setting('alert_toast_enabled', '1') == '1'
-        )
-        self.toast_checkbox.stateChanged.connect(self.on_toast_enabled_changed)
-
-        # 알림음 사용 체크박스
-        self.sound_checkbox = QCheckBox("알림음 사용")
-        self.sound_checkbox.setChecked(
-            self.db_manager.get_setting('alert_sound_enabled', '0') == '1'
-        )
-        self.sound_checkbox.stateChanged.connect(self.on_sound_enabled_changed)
-
-        # 랜덤 재생 체크박스
-        self.random_checkbox = QCheckBox("랜덤 재생 (체크 해제 시 선택한 사운드 재생)")
-        current_mode = self.db_manager.get_setting('alert_sound_mode', 'single')
-        self.random_checkbox.setChecked(current_mode == 'random')
-        self.random_checkbox.stateChanged.connect(self.on_sound_mode_changed)
-
-        # 사운드 목록
-        self.sound_list = QListWidget()
-        self.sound_list.setMaximumHeight(150)
-        self.load_sound_list()
-        self.sound_list.itemSelectionChanged.connect(self.on_sound_selection_changed)
-
-        # 버튼들
-        btn_layout = QHBoxLayout()
-        add_btn = QPushButton("➕ 추가")
-        add_btn.clicked.connect(self.on_add_sound)
-
-        delete_btn = QPushButton("🗑️ 삭제")
-        delete_btn.clicked.connect(self.on_delete_sound)
-
-        test_btn = QPushButton("▶ 테스트")
-        test_btn.clicked.connect(self.on_test_sound)
-
-        btn_layout.addWidget(add_btn)
-        btn_layout.addWidget(delete_btn)
-        btn_layout.addWidget(test_btn)
-        btn_layout.addStretch()
-
-        # 안내 문구
-        hint_label = QLabel("💡 MP3, WAV, OGG, FLAC 지원 (WAV로 자동 변환). 사운드가 없으면 시스템 기본음 재생.")
-        hint_label.setStyleSheet("color: #888; font-size: 9pt;")
-
-        layout.addWidget(self.toast_checkbox)
-        layout.addWidget(self.sound_checkbox)
-        layout.addWidget(self.random_checkbox)
-        layout.addWidget(self.sound_list)
-        layout.addLayout(btn_layout)
-        layout.addWidget(hint_label)
-
-        group.setLayout(layout)
-        return group
-
-    def load_sound_list(self):
-        """사운드 목록 로드"""
-        self.sound_list.clear()
-        sounds = self.db_manager.get_all_alert_sounds()
-        selected_id = self.db_manager.get_setting('alert_sound_selected', None)
-
-        for sound in sounds:
-            item = QListWidgetItem(f"{sound['name']}  ({Path(sound['file_path']).name})")
-            item.setData(Qt.ItemDataRole.UserRole, sound['id'])
-            self.sound_list.addItem(item)
-
-            # 선택된 사운드 표시
-            if selected_id and int(selected_id) == sound['id']:
-                item.setSelected(True)
-
     def on_auto_start_changed(self, state):
         """자동 시작 설정 변경"""
         if state == Qt.CheckState.Checked.value:
@@ -154,179 +70,6 @@ class SettingsTab(QWidget):
             if not success:
                 QMessageBox.warning(self, "오류", "자동 시작 해제에 실패했습니다.")
                 self.auto_start_checkbox.setChecked(True)
-
-    def on_toast_enabled_changed(self, state):
-        """윈도우 토스트 사용 설정 변경"""
-        enabled = state == Qt.CheckState.Checked.value
-        self.db_manager.set_setting('alert_toast_enabled', '1' if enabled else '0')
-        print(f"[SettingsTab] 윈도우 토스트 {'활성화' if enabled else '비활성화'}")
-
-    def on_sound_enabled_changed(self, state):
-        """알림음 사용 설정 변경"""
-        enabled = state == Qt.CheckState.Checked.value
-        self.db_manager.set_setting('alert_sound_enabled', '1' if enabled else '0')
-        print(f"[SettingsTab] 알림음 {'활성화' if enabled else '비활성화'}")
-
-    def on_sound_mode_changed(self, state):
-        """재생 모드 변경"""
-        if state == Qt.CheckState.Checked.value:
-            mode = 'random'
-        else:
-            mode = 'single'
-        self.db_manager.set_setting('alert_sound_mode', mode)
-        print(f"[SettingsTab] 알림음 재생 모드: {mode}")
-
-    def on_sound_selection_changed(self):
-        """사운드 선택 변경"""
-        items = self.sound_list.selectedItems()
-        if items:
-            sound_id = items[0].data(Qt.ItemDataRole.UserRole)
-            self.db_manager.set_setting('alert_sound_selected', str(sound_id))
-            print(f"[SettingsTab] 선택된 사운드 ID: {sound_id}")
-
-    def on_add_sound(self):
-        """사운드 추가 (MP3는 WAV로 자동 변환)"""
-        # 파일 선택
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "알림음 파일 선택",
-            "",
-            "Audio Files (*.wav *.mp3 *.ogg *.flac);;WAV Files (*.wav);;MP3 Files (*.mp3);;All Files (*)"
-        )
-
-        if not file_path:
-            return
-
-        source_path = Path(file_path)
-
-        # WAV가 아니면 변환
-        if source_path.suffix.lower() != '.wav':
-            try:
-                converted_path = self._convert_to_wav(file_path)
-                if not converted_path:
-                    return
-                final_path = converted_path
-            except Exception as e:
-                QMessageBox.critical(self, "변환 실패", f"오디오 변환 중 오류:\n{e}")
-                return
-        else:
-            # WAV는 sounds 폴더로 복사
-            final_path = self._copy_to_sounds_dir(file_path)
-
-        # 이름 입력
-        default_name = source_path.stem
-        name, ok = QInputDialog.getText(
-            self, "사운드 이름",
-            "사운드 이름을 입력하세요:",
-            QLineEdit.EchoMode.Normal,
-            default_name
-        )
-
-        if ok and name:
-            self.db_manager.add_alert_sound(name, str(final_path))
-            self.load_sound_list()
-            print(f"[SettingsTab] 사운드 추가: {name} - {final_path}")
-
-    def _convert_to_wav(self, source_path: str) -> str:
-        """오디오 파일을 WAV로 변환 (ffmpeg 직접 호출)"""
-        try:
-            import subprocess
-            import imageio_ffmpeg
-
-            ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-
-            # 저장 경로 생성
-            sounds_dir = AppConfig.get_sounds_dir()
-            output_name = f"{uuid.uuid4().hex}.wav"
-            output_path = sounds_dir / output_name
-
-            # ffmpeg로 변환 (덮어쓰기, 오류 시 stderr 출력)
-            cmd = [
-                ffmpeg_path,
-                '-y',  # 덮어쓰기
-                '-i', source_path,
-                '-acodec', 'pcm_s16le',  # WAV 코덱
-                '-ar', '44100',  # 샘플레이트
-                str(output_path)
-            ]
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW  # Windows에서 콘솔 창 숨김
-            )
-
-            if result.returncode != 0:
-                print(f"[SettingsTab] ffmpeg 오류: {result.stderr}")
-                raise Exception(f"ffmpeg 변환 실패: {result.stderr[:200]}")
-
-            print(f"[SettingsTab] 오디오 변환 완료: {source_path} -> {output_path}")
-            return str(output_path)
-
-        except ImportError as e:
-            QMessageBox.warning(
-                self, "라이브러리 필요",
-                "MP3 변환을 위해 imageio-ffmpeg가 필요합니다.\n"
-                "pip install imageio-ffmpeg"
-            )
-            return None
-        except Exception as e:
-            print(f"[SettingsTab] 오디오 변환 오류: {e}")
-            raise
-
-    def _copy_to_sounds_dir(self, source_path: str) -> str:
-        """WAV 파일을 sounds 폴더로 복사"""
-        import shutil
-
-        sounds_dir = AppConfig.get_sounds_dir()
-        output_name = f"{uuid.uuid4().hex}.wav"
-        output_path = sounds_dir / output_name
-
-        shutil.copy2(source_path, output_path)
-        print(f"[SettingsTab] 파일 복사: {source_path} -> {output_path}")
-
-        return str(output_path)
-
-    def on_delete_sound(self):
-        """사운드 삭제"""
-        items = self.sound_list.selectedItems()
-        if not items:
-            QMessageBox.warning(self, "삭제", "삭제할 사운드를 선택하세요.")
-            return
-
-        sound_id = items[0].data(Qt.ItemDataRole.UserRole)
-        sound_name = items[0].text().split('  (')[0]
-
-        reply = QMessageBox.question(
-            self, "사운드 삭제",
-            f"'{sound_name}' 사운드를 삭제하시겠습니까?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self.db_manager.delete_alert_sound(sound_id)
-            self.load_sound_list()
-            print(f"[SettingsTab] 사운드 삭제: {sound_name}")
-
-    def on_test_sound(self):
-        """선택된 사운드 테스트"""
-        items = self.sound_list.selectedItems()
-
-        if not items:
-            # 선택된 사운드 없으면 시스템 기본음
-            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-            return
-
-        sound_id = items[0].data(Qt.ItemDataRole.UserRole)
-        sound = self.db_manager.get_alert_sound_by_id(sound_id)
-
-        if sound:
-            sound_path = Path(sound['file_path'])
-            if sound_path.exists() and sound_path.suffix.lower() == '.wav':
-                winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
-            else:
-                QMessageBox.warning(self, "오류", "파일이 없거나 지원되지 않는 형식입니다.")
 
     def create_data_management(self):
         """데이터 관리 (Import/Export) UI"""

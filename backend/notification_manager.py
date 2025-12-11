@@ -12,7 +12,7 @@ class NotificationManager:
     """
     Windows 토스트 알림 관리
 
-    - winotify 라이브러리 사용
+    - windows-toasts 라이브러리 사용 (이미지 지원)
     - 쿨다운 기능으로 반복 알림 방지
     - 커스텀 알림음 지원 (wav 파일)
     """
@@ -22,7 +22,8 @@ class NotificationManager:
 
     def __init__(self, app_name: str = "Activity Tracker", cooldown: int = None,
                  get_sound_settings: Optional[Callable[[], tuple]] = None,
-                 get_toast_enabled: Optional[Callable[[], bool]] = None):
+                 get_toast_enabled: Optional[Callable[[], bool]] = None,
+                 get_image_settings: Optional[Callable[[], tuple]] = None):
         """
         알림 매니저 초기화
 
@@ -31,26 +32,34 @@ class NotificationManager:
             cooldown: 같은 태그 알림 간 최소 간격 (초)
             get_sound_settings: 사운드 설정 조회 콜백 -> (enabled: bool, file_path: str)
             get_toast_enabled: 토스트 활성화 여부 조회 콜백 -> bool
+            get_image_settings: 이미지 설정 조회 콜백 -> (enabled: bool, file_path: str)
         """
         self.app_name = app_name
         self.cooldown = cooldown or self.DEFAULT_COOLDOWN
         self.get_sound_settings = get_sound_settings
         self.get_toast_enabled = get_toast_enabled
+        self.get_image_settings = get_image_settings
 
         # 태그별 마지막 알림 시간 기록 {tag_id: timestamp}
         self._last_notification: Dict[int, float] = {}
         self._lock = threading.Lock()
 
-        # winotify import (설치 안 됐으면 graceful fallback)
+        # windows-toasts import (설치 안 됐으면 graceful fallback)
         try:
-            from winotify import Notification, audio
-            self._Notification = Notification
-            self._audio = audio
+            from windows_toasts import Toast, InteractableWindowsToaster, ToastDisplayImage, ToastImagePosition
+            self._Toast = Toast
+            self._ToastDisplayImage = ToastDisplayImage
+            self._ToastImagePosition = ToastImagePosition
+            # 등록된 AUMID 사용 (register_hkey_aumid로 등록 필요)
+            self._toaster = InteractableWindowsToaster(
+                applicationText=app_name,
+                notifierAUMID="ActivityTracker"
+            )
             self._available = True
-            print("[NotificationManager] winotify 초기화 완료")
+            print("[NotificationManager] windows-toasts 초기화 완료")
         except ImportError:
             self._available = False
-            print("[NotificationManager] 경고: winotify 미설치 - 알림 비활성화")
+            print("[NotificationManager] 경고: windows-toasts 미설치 - 알림 비활성화")
 
     def is_available(self) -> bool:
         """알림 기능 사용 가능 여부"""
@@ -112,12 +121,18 @@ class NotificationManager:
             return False
 
         try:
-            # 별도 스레드에서 알림 표시 (블로킹 방지)
-            threading.Thread(
-                target=self._show_notification,
-                args=(title, message, icon_path, toast_enabled, sound_settings),
-                daemon=True
-            ).start()
+            # 토스트 표시 (동기 - COM 스레드 요구사항)
+            if toast_enabled and self._available:
+                self._show_toast(message)
+
+            # 사운드는 별도 스레드에서 재생 (블로킹 방지)
+            if sound_settings and sound_settings[0]:
+                threading.Thread(
+                    target=self._play_custom_sound,
+                    args=(sound_settings,),
+                    daemon=True
+                ).start()
+
             return True
 
         except Exception as e:
@@ -142,39 +157,42 @@ class NotificationManager:
                 pass
         return None
 
-    def _show_notification(self, title: str, message: str,
-                          icon_path: Optional[str] = None,
-                          toast_enabled: bool = True,
-                          sound_settings: Optional[tuple] = None):
-        """실제 알림 표시 (별도 스레드)"""
+    def _get_image_settings_once(self) -> Optional[tuple]:
+        """이미지 설정을 한 번만 조회"""
+        if self.get_image_settings:
+            try:
+                return self.get_image_settings()
+            except Exception:
+                pass
+        return None
+
+    def _show_toast(self, message: str):
+        """토스트 알림 표시 (메인 스레드에서 호출)"""
         try:
-            # 토스트 표시 (활성화된 경우에만)
-            if toast_enabled and self._available:
-                toast = self._Notification(
-                    app_id=self.app_name,
-                    title=title,
-                    msg=message,
-                    duration="short"  # short(5초) or long(25초)
-                )
+            from windows_toasts import ToastDuration, ToastAudio
 
-                # winotify 기본 사운드 비활성화
-                # set_audio(Silent, loop=False)는 토스트를 막는 버그가 있어서
-                # loop 파라미터 없이 시도
-                try:
-                    toast.set_audio(self._audio.Silent)
-                except Exception:
-                    pass
+            toast = self._Toast()
+            toast.text_fields = [message]
+            toast.duration = ToastDuration.Short  # 약 5초 (Windows 최소값)
+            toast.audio = ToastAudio(silent=True)  # 시스템 알림음 끄기
 
-                toast.show()
-                print(f"[NotificationManager] 토스트 표시: {title} - {message}")
-            else:
-                print(f"[NotificationManager] 토스트 비활성화 - 사운드만 재생")
+            # 이미지 설정 확인
+            image_settings = self._get_image_settings_once()
+            if image_settings:
+                image_enabled, image_path = image_settings
+                if image_enabled and image_path and Path(image_path).exists():
+                    toast.AddImage(
+                        self._ToastDisplayImage.fromPath(
+                            image_path,
+                            position=self._ToastImagePosition.Hero  # 큰 배너 이미지
+                        )
+                    )
 
-            # 커스텀 사운드 재생 (미리 조회된 설정 사용)
-            self._play_custom_sound(sound_settings)
+            self._toaster.show_toast(toast)
+            print(f"[NotificationManager] 토스트 표시: {message}")
 
         except Exception as e:
-            print(f"[NotificationManager] 알림 표시 실패: {e}")
+            print(f"[NotificationManager] 토스트 표시 실패: {e}")
 
     def _play_custom_sound(self, sound_settings: Optional[tuple] = None):
         """커스텀 알림음 재생"""

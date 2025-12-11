@@ -22,6 +22,8 @@ class MonitorEngine(QThread):
 
     # UI 업데이트용 시그널
     activity_detected = pyqtSignal(dict)
+    # 토스트 알림 요청 시그널 (메인 스레드에서 처리)
+    toast_requested = pyqtSignal(int, str, int)  # tag_id, message, cooldown
 
     # Idle 임계값 (초) - 5분
     IDLE_THRESHOLD = 300
@@ -45,7 +47,8 @@ class MonitorEngine(QThread):
         self.chrome_receiver = ChromeURLReceiver(port=8766)
         self.notification_manager = NotificationManager(
             get_sound_settings=self._get_sound_settings,
-            get_toast_enabled=self._get_toast_enabled
+            get_toast_enabled=self._get_toast_enabled,
+            get_image_settings=self._get_image_settings
         )
 
         # 상태 변수
@@ -228,7 +231,7 @@ class MonitorEngine(QThread):
 
     def _check_tag_alert(self, tag_id: int):
         """
-        태그 알림 설정 확인 및 알림 표시
+        태그 알림 설정 확인 및 시그널 발생 (메인 스레드에서 토스트 표시)
 
         Args:
             tag_id: 태그 ID
@@ -240,12 +243,8 @@ class MonitorEngine(QThread):
                 message = tag.get('alert_message') or f"'{tag['name']}' 활동이 감지되었습니다!"
                 # 태그별 쿨다운 (없으면 기본값 30초)
                 cooldown = tag.get('alert_cooldown') or 30
-                self.notification_manager.show(
-                    tag_id=tag_id,
-                    title="",
-                    message=message,
-                    cooldown=cooldown
-                )
+                # 시그널로 메인 스레드에 알림 요청
+                self.toast_requested.emit(tag_id, message, cooldown)
         except Exception as e:
             print(f"[MonitorEngine] 알림 체크 오류: {e}")
 
@@ -305,6 +304,25 @@ class MonitorEngine(QThread):
 
         except Exception as e:
             print(f"[MonitorEngine] 사운드 설정 조회 오류: {e}")
+            return (False, None)
+
+    def _get_image_settings(self) -> tuple:
+        """
+        알림 이미지 설정 조회
+
+        Returns:
+            (enabled: bool, file_path: str or None)
+        """
+        try:
+            enabled = self.db_manager.get_setting('alert_image_enabled', '0') == '1'
+            if not enabled:
+                return (False, None)
+
+            image_path = self.db_manager.get_setting('alert_image_path', None)
+            return (True, image_path)
+
+        except Exception as e:
+            print(f"[MonitorEngine] 이미지 설정 조회 오류: {e}")
             return (False, None)
 
     def end_current_activity(self):

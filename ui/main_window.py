@@ -41,6 +41,7 @@ class MainWindow(QMainWindow):
 
         # 모니터링 시작
         self.monitor_engine.activity_detected.connect(self.on_activity_update)
+        self.monitor_engine.toast_requested.connect(self.on_toast_requested)
         self.monitor_engine.start()
 
         # 시스템 트레이 아이콘
@@ -56,12 +57,14 @@ class MainWindow(QMainWindow):
         from ui.dashboard_tab import DashboardTab
         from ui.timeline_tab import TimelineTab
         from ui.tag_management_tab import TagManagementTab
+        from ui.notification_tab import NotificationTab
         from ui.settings_tab import SettingsTab
 
         self.tabs = QTabWidget()
         self.tabs.addTab(DashboardTab(self.db_manager), "📊 대시보드")
         self.tabs.addTab(TimelineTab(self.db_manager, self.monitor_engine), "⏱️ 타임라인")
         self.tabs.addTab(TagManagementTab(self.db_manager, self.rule_engine), "🏷️ 태그 관리")
+        self.tabs.addTab(NotificationTab(self.db_manager), "🔔 알림")
         self.tabs.addTab(SettingsTab(self.db_manager, self.rule_engine), "⚙️ 설정")
 
         self.setCentralWidget(self.tabs)
@@ -76,6 +79,23 @@ class MainWindow(QMainWindow):
         """
         print(f"[MainWindow] 활동 업데이트: {activity_info['process_name']}")
         # 현재 탭이 대시보드면 갱신 (나중에 구현)
+
+    @pyqtSlot(int, str, int)
+    def on_toast_requested(self, tag_id: int, message: str, cooldown: int):
+        """
+        토스트 알림 요청 시그널 수신 (메인 스레드에서 실행)
+
+        Args:
+            tag_id: 태그 ID
+            message: 알림 메시지
+            cooldown: 쿨다운 (초)
+        """
+        self.monitor_engine.notification_manager.show(
+            tag_id=tag_id,
+            title="",
+            message=message,
+            cooldown=cooldown
+        )
 
     def show_window(self):
         """창 복원 및 표시"""

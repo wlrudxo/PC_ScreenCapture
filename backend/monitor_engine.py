@@ -237,7 +237,7 @@ class MonitorEngine(QThread):
                 cooldown = tag.get('alert_cooldown') or 30
                 self.notification_manager.show(
                     tag_id=tag_id,
-                    title=f"⚠️ {tag['name']}",
+                    title="",
                     message=message,
                     cooldown=cooldown
                 )

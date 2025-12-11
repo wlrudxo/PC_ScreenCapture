@@ -93,9 +93,10 @@ class NotificationManager:
         Returns:
             True: 알림 표시됨, False: 쿨다운 또는 비활성화
         """
-        # 토스트/사운드 설정 확인
+        # 토스트/사운드 설정 확인 (한 번만 조회하여 재사용)
         toast_enabled = self._is_toast_enabled()
-        sound_enabled = self._is_sound_enabled()
+        sound_settings = self._get_sound_settings_once()
+        sound_enabled = sound_settings[0] if sound_settings else False
 
         # 둘 다 off면 알림 없음
         if not toast_enabled and not sound_enabled:
@@ -114,7 +115,7 @@ class NotificationManager:
             # 별도 스레드에서 알림 표시 (블로킹 방지)
             threading.Thread(
                 target=self._show_notification,
-                args=(title, message, icon_path, toast_enabled),
+                args=(title, message, icon_path, toast_enabled, sound_settings),
                 daemon=True
             ).start()
             return True
@@ -132,19 +133,19 @@ class NotificationManager:
                 pass
         return True  # 기본값: 활성화
 
-    def _is_sound_enabled(self) -> bool:
-        """사운드 활성화 여부"""
+    def _get_sound_settings_once(self) -> Optional[tuple]:
+        """사운드 설정을 한 번만 조회 (랜덤 선택 시 중복 호출 방지)"""
         if self.get_sound_settings:
             try:
-                enabled, _ = self.get_sound_settings()
-                return enabled
+                return self.get_sound_settings()
             except Exception:
                 pass
-        return False  # 기본값: 비활성화
+        return None
 
     def _show_notification(self, title: str, message: str,
                           icon_path: Optional[str] = None,
-                          toast_enabled: bool = True):
+                          toast_enabled: bool = True,
+                          sound_settings: Optional[tuple] = None):
         """실제 알림 표시 (별도 스레드)"""
         try:
             # 토스트 표시 (활성화된 경우에만)
@@ -169,19 +170,19 @@ class NotificationManager:
             else:
                 print(f"[NotificationManager] 토스트 비활성화 - 사운드만 재생")
 
-            # 커스텀 사운드 재생
-            self._play_custom_sound()
+            # 커스텀 사운드 재생 (미리 조회된 설정 사용)
+            self._play_custom_sound(sound_settings)
 
         except Exception as e:
             print(f"[NotificationManager] 알림 표시 실패: {e}")
 
-    def _play_custom_sound(self):
+    def _play_custom_sound(self, sound_settings: Optional[tuple] = None):
         """커스텀 알림음 재생"""
-        if not self.get_sound_settings:
+        if sound_settings is None:
             return
 
         try:
-            enabled, file_path = self.get_sound_settings()
+            enabled, file_path = sound_settings
 
             if not enabled:
                 return

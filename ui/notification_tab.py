@@ -350,7 +350,9 @@ class NotificationTab(QWidget):
         print(f"[NotificationTab] 알림 이미지 {'활성화' if enabled else '비활성화'}")
 
     def _on_select_image(self):
-        """이미지 선택"""
+        """이미지 선택 및 크롭"""
+        from ui.image_crop_dialog import ImageCropDialog
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "알림 이미지 선택",
@@ -361,15 +363,22 @@ class NotificationTab(QWidget):
         if not file_path:
             return
 
-        # images 폴더로 복사
-        source_path = Path(file_path)
+        # 크롭 다이얼로그 표시
+        dialog = ImageCropDialog(file_path, self)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+
+        cropped_image = dialog.get_cropped_image()
+        if cropped_image is None:
+            return
+
+        # images 폴더에 저장
         images_dir = AppConfig.get_app_dir() / "images"
         images_dir.mkdir(exist_ok=True)
 
-        output_name = f"alert_image{source_path.suffix}"
-        output_path = images_dir / output_name
+        output_path = images_dir / "alert_image.png"
+        cropped_image.save(str(output_path), "PNG")
 
-        shutil.copy2(file_path, output_path)
         self.db_manager.set_setting('alert_image_path', str(output_path))
         self._update_image_label()
         print(f"[NotificationTab] 알림 이미지 설정: {output_path}")
@@ -383,17 +392,22 @@ class NotificationTab(QWidget):
     def _on_test_toast(self):
         """토스트 테스트"""
         try:
-            from windows_toasts import Toast, InteractableWindowsToaster, ToastDisplayImage, ToastImagePosition
+            from windows_toasts import Toast, InteractableWindowsToaster, ToastDisplayImage, ToastImagePosition, ToastDuration, ToastAudio
 
-            toaster = InteractableWindowsToaster('Activity Tracker')
+            toaster = InteractableWindowsToaster(
+                applicationText="Activity Tracker",
+                notifierAUMID="ActivityTracker"
+            )
             toast = Toast()
             toast.text_fields = ['테스트 알림입니다!']
+            toast.duration = ToastDuration.Short
+            toast.audio = ToastAudio(silent=True)
 
             # 이미지 설정 확인
             if self.image_checkbox.isChecked():
                 image_path = self.db_manager.get_setting('alert_image_path', None)
                 if image_path and Path(image_path).exists():
-                    toast.AddImage(ToastDisplayImage.fromPath(image_path, position=ToastImagePosition.Inline))
+                    toast.AddImage(ToastDisplayImage.fromPath(image_path, position=ToastImagePosition.Hero))
 
             toaster.show_toast(toast)
             print("[NotificationTab] 테스트 토스트 전송")

@@ -50,6 +50,7 @@ class MonitorEngine(QThread):
 
         # 상태 변수
         self.current_activity_id: Optional[int] = None
+        self.current_tag_id: Optional[int] = None  # 현재 활동의 태그 ID (알림용)
         self.last_activity_info: Optional[Dict[str, Any]] = None
         self.running = False
         self._last_played_sound_id: Optional[int] = None  # 직전 재생된 사운드 ID
@@ -72,6 +73,9 @@ class MonitorEngine(QThread):
                     self.end_current_activity()
                     self.start_new_activity(activity_info)
                     self.last_activity_info = activity_info
+                elif self.current_tag_id is not None:
+                    # 동일 활동이어도 알림 체크 (쿨다운이 중복 알림 방지)
+                    self._check_tag_alert(self.current_tag_id)
 
                 time.sleep(2)
 
@@ -199,6 +203,7 @@ class MonitorEngine(QThread):
         try:
             # 룰 엔진으로 태그 분류
             tag_id, rule_id = self.rule_engine.match(info)
+            self.current_tag_id = tag_id  # 알림용 태그 ID 저장
 
             # DB에 새 활동 저장
             self.current_activity_id = self.db_manager.create_activity(
@@ -309,5 +314,6 @@ class MonitorEngine(QThread):
                 self.db_manager.end_activity(self.current_activity_id)
                 print(f"[MonitorEngine] 활동 종료: ID {self.current_activity_id}")
                 self.current_activity_id = None
+                self.current_tag_id = None
             except Exception as e:
                 print(f"[MonitorEngine] 활동 종료 오류: {e}")

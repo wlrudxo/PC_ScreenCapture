@@ -132,33 +132,42 @@ class NotificationTab(QWidget):
         )
         self.image_checkbox.stateChanged.connect(self._on_image_enabled_changed)
 
-        # 현재 이미지 표시
-        image_row = QHBoxLayout()
-        self.image_path_label = QLabel("이미지 없음")
-        self.image_path_label.setStyleSheet("color: #666;")
-        self._update_image_label()
+        # 랜덤 표시 체크박스
+        self.image_random_checkbox = QCheckBox("랜덤 표시 (체크 해제 시 선택한 이미지 표시)")
+        current_mode = self.db_manager.get_setting('alert_image_mode', 'single')
+        self.image_random_checkbox.setChecked(current_mode == 'random')
+        self.image_random_checkbox.stateChanged.connect(self._on_image_mode_changed)
 
-        select_btn = QPushButton("이미지 선택")
-        select_btn.clicked.connect(self._on_select_image)
+        # 이미지 목록
+        self.image_list = QListWidget()
+        self.image_list.setMaximumHeight(150)
+        self._load_image_list()
+        self.image_list.itemSelectionChanged.connect(self._on_image_selection_changed)
 
-        clear_btn = QPushButton("제거")
-        clear_btn.clicked.connect(self._on_clear_image)
+        # 버튼들
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("추가")
+        add_btn.clicked.connect(self._on_add_image)
 
-        image_row.addWidget(self.image_path_label, 1)
-        image_row.addWidget(select_btn)
-        image_row.addWidget(clear_btn)
+        delete_btn = QPushButton("삭제")
+        delete_btn.clicked.connect(self._on_delete_image)
 
-        # 테스트 버튼
-        test_btn = QPushButton("토스트 테스트")
+        test_btn = QPushButton("테스트")
         test_btn.clicked.connect(self._on_test_toast)
 
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addWidget(test_btn)
+        btn_layout.addStretch()
+
         # 안내 문구
-        hint_label = QLabel("PNG, JPG 지원. 토스트 하단에 이미지가 표시됩니다.")
+        hint_label = QLabel("PNG, JPG 지원. 2:1 비율로 크롭됩니다. 이미지가 없으면 토스트에 이미지 없이 표시.")
         hint_label.setStyleSheet("color: #888; font-size: 9pt;")
 
         layout.addWidget(self.image_checkbox)
-        layout.addLayout(image_row)
-        layout.addWidget(test_btn)
+        layout.addWidget(self.image_random_checkbox)
+        layout.addWidget(self.image_list)
+        layout.addLayout(btn_layout)
         layout.addWidget(hint_label)
 
         group.setLayout(layout)
@@ -333,15 +342,19 @@ class NotificationTab(QWidget):
                 QMessageBox.warning(self, "오류", "파일이 없거나 지원되지 않는 형식입니다.")
 
     # === 이미지 설정 ===
-    def _update_image_label(self):
-        """이미지 경로 라벨 업데이트"""
-        image_path = self.db_manager.get_setting('alert_image_path', None)
-        if image_path and Path(image_path).exists():
-            self.image_path_label.setText(Path(image_path).name)
-            self.image_path_label.setStyleSheet("color: #333;")
-        else:
-            self.image_path_label.setText("이미지 없음")
-            self.image_path_label.setStyleSheet("color: #888;")
+    def _load_image_list(self):
+        """이미지 목록 로드"""
+        self.image_list.clear()
+        images = self.db_manager.get_all_alert_images()
+        selected_id = self.db_manager.get_setting('alert_image_selected', None)
+
+        for image in images:
+            item = QListWidgetItem(f"{image['name']}  ({Path(image['file_path']).name})")
+            item.setData(Qt.ItemDataRole.UserRole, image['id'])
+            self.image_list.addItem(item)
+
+            if selected_id and int(selected_id) == image['id']:
+                item.setSelected(True)
 
     def _on_image_enabled_changed(self, state):
         """이미지 사용 설정 변경"""
@@ -349,8 +362,22 @@ class NotificationTab(QWidget):
         self.db_manager.set_setting('alert_image_enabled', '1' if enabled else '0')
         print(f"[NotificationTab] 알림 이미지 {'활성화' if enabled else '비활성화'}")
 
-    def _on_select_image(self):
-        """이미지 선택 및 크롭"""
+    def _on_image_mode_changed(self, state):
+        """이미지 표시 모드 변경"""
+        mode = 'random' if state == Qt.CheckState.Checked.value else 'single'
+        self.db_manager.set_setting('alert_image_mode', mode)
+        print(f"[NotificationTab] 알림 이미지 표시 모드: {mode}")
+
+    def _on_image_selection_changed(self):
+        """이미지 선택 변경"""
+        items = self.image_list.selectedItems()
+        if items:
+            image_id = items[0].data(Qt.ItemDataRole.UserRole)
+            self.db_manager.set_setting('alert_image_selected', str(image_id))
+            print(f"[NotificationTab] 선택된 이미지 ID: {image_id}")
+
+    def _on_add_image(self):
+        """이미지 추가"""
         from ui.image_crop_dialog import ImageCropDialog
 
         file_path, _ = QFileDialog.getOpenFileName(
@@ -362,6 +389,8 @@ class NotificationTab(QWidget):
 
         if not file_path:
             return
+
+        source_path = Path(file_path)
 
         # 크롭 다이얼로그 표시
         dialog = ImageCropDialog(file_path, self)
@@ -376,21 +405,46 @@ class NotificationTab(QWidget):
         images_dir = AppConfig.get_app_dir() / "images"
         images_dir.mkdir(exist_ok=True)
 
-        output_path = images_dir / "alert_image.png"
+        output_name = f"{uuid.uuid4().hex}.png"
+        output_path = images_dir / output_name
         cropped_image.save(str(output_path), "PNG")
 
-        self.db_manager.set_setting('alert_image_path', str(output_path))
-        self._update_image_label()
-        print(f"[NotificationTab] 알림 이미지 설정: {output_path}")
+        # 이름 입력
+        default_name = source_path.stem
+        name, ok = QInputDialog.getText(
+            self, "이미지 이름",
+            "이미지 이름을 입력하세요:",
+            QLineEdit.EchoMode.Normal,
+            default_name
+        )
 
-    def _on_clear_image(self):
-        """이미지 제거"""
-        self.db_manager.set_setting('alert_image_path', '')
-        self._update_image_label()
-        print("[NotificationTab] 알림 이미지 제거")
+        if ok and name:
+            self.db_manager.add_alert_image(name, str(output_path))
+            self._load_image_list()
+            print(f"[NotificationTab] 이미지 추가: {name}")
+
+    def _on_delete_image(self):
+        """이미지 삭제"""
+        items = self.image_list.selectedItems()
+        if not items:
+            QMessageBox.warning(self, "삭제", "삭제할 이미지를 선택하세요.")
+            return
+
+        image_id = items[0].data(Qt.ItemDataRole.UserRole)
+        image_name = items[0].text().split('  (')[0]
+
+        reply = QMessageBox.question(
+            self, "이미지 삭제",
+            f"'{image_name}' 이미지를 삭제하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.db_manager.delete_alert_image(image_id)
+            self._load_image_list()
 
     def _on_test_toast(self):
-        """토스트 테스트"""
+        """토스트 테스트 - 선택된 이미지 사용"""
         try:
             from windows_toasts import Toast, InteractableWindowsToaster, ToastDisplayImage, ToastImagePosition, ToastDuration, ToastAudio
 
@@ -403,11 +457,27 @@ class NotificationTab(QWidget):
             toast.duration = ToastDuration.Short
             toast.audio = ToastAudio(silent=True)
 
-            # 이미지 설정 확인
+            # 이미지 추가 (선택된 이미지 또는 첫 번째 이미지)
             if self.image_checkbox.isChecked():
-                image_path = self.db_manager.get_setting('alert_image_path', None)
+                image_path = None
+
+                # 선택된 이미지 확인
+                items = self.image_list.selectedItems()
+                if items:
+                    image_id = items[0].data(Qt.ItemDataRole.UserRole)
+                    image = self.db_manager.get_alert_image_by_id(image_id)
+                    if image:
+                        image_path = image['file_path']
+
+                # 선택 안됐으면 첫 번째 이미지 사용
+                if not image_path:
+                    images = self.db_manager.get_all_alert_images()
+                    if images:
+                        image_path = images[0]['file_path']
+
                 if image_path and Path(image_path).exists():
                     toast.AddImage(ToastDisplayImage.fromPath(image_path, position=ToastImagePosition.Hero))
+                    print(f"[NotificationTab] 테스트 이미지: {image_path}")
 
             toaster.show_toast(toast)
             print("[NotificationTab] 테스트 토스트 전송")

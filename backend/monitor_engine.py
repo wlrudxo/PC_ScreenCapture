@@ -57,6 +57,7 @@ class MonitorEngine(QThread):
         self.last_activity_info: Optional[Dict[str, Any]] = None
         self.running = False
         self._last_played_sound_id: Optional[int] = None  # 직전 재생된 사운드 ID
+        self._last_shown_image_id: Optional[int] = None  # 직전 표시된 이미지 ID
 
         # 프로그램 시작 시 종료되지 않은 활동 정리
         self.db_manager.cleanup_unfinished_activities()
@@ -313,13 +314,39 @@ class MonitorEngine(QThread):
         Returns:
             (enabled: bool, file_path: str or None)
         """
+        import random
+
         try:
             enabled = self.db_manager.get_setting('alert_image_enabled', '0') == '1'
             if not enabled:
                 return (False, None)
 
-            image_path = self.db_manager.get_setting('alert_image_path', None)
-            return (True, image_path)
+            # 표시 모드 확인 (single/random)
+            display_mode = self.db_manager.get_setting('alert_image_mode', 'single')
+            images = self.db_manager.get_all_alert_images()
+
+            if not images:
+                # 이미지 목록이 비어있으면 이미지 없이 표시
+                return (True, None)
+
+            if display_mode == 'random':
+                # 랜덤 선택 (2개 이상이면 직전과 다른 이미지 선택)
+                if len(images) >= 2 and self._last_shown_image_id is not None:
+                    candidates = [i for i in images if i['id'] != self._last_shown_image_id]
+                    selected = random.choice(candidates) if candidates else random.choice(images)
+                else:
+                    selected = random.choice(images)
+                self._last_shown_image_id = selected['id']
+                return (True, selected['file_path'])
+            else:
+                # 단일 선택 모드
+                selected_id = self.db_manager.get_setting('alert_image_selected', None)
+                if selected_id:
+                    selected = self.db_manager.get_alert_image_by_id(int(selected_id))
+                    if selected:
+                        return (True, selected['file_path'])
+                # 선택된 이미지가 없으면 첫 번째 이미지 사용
+                return (True, images[0]['file_path'])
 
         except Exception as e:
             print(f"[MonitorEngine] 이미지 설정 조회 오류: {e}")

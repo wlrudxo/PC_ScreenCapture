@@ -160,6 +160,16 @@ class DatabaseManager:
             )
         """)
 
+        # alert_images 테이블 (알림 이미지 목록)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alert_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
             ('업무', '#4CAF50'),
@@ -551,6 +561,35 @@ class DatabaseManager:
         """알림음 삭제"""
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM alert_sounds WHERE id = ?", (sound_id,))
+        self.conn.commit()
+
+    # === 알림 이미지 관리 ===
+    def get_all_alert_images(self) -> List[Dict[str, Any]]:
+        """모든 알림 이미지 조회"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alert_images ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_alert_image_by_id(self, image_id: int) -> Optional[Dict[str, Any]]:
+        """ID로 알림 이미지 조회"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alert_images WHERE id = ?", (image_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def add_alert_image(self, name: str, file_path: str) -> int:
+        """알림 이미지 추가"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO alert_images (name, file_path) VALUES (?, ?)
+        """, (name, file_path))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def delete_alert_image(self, image_id: int):
+        """알림 이미지 삭제"""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM alert_images WHERE id = ?", (image_id,))
         self.conn.commit()
 
     def close(self):

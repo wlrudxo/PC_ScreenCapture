@@ -156,9 +156,18 @@ class MonitorEngine(QThread):
         if 'chrome' in process_name_lower:
             chrome_data = self.chrome_receiver.get_latest_url()
             if chrome_data:
-                profile = chrome_data.get('profile', 'N/A')
-                url = chrome_data.get('url', 'N/A')
-                print(f"[MonitorEngine] Chrome 감지 - 프로필: [{profile}] URL: {url}")
+                # 검증: Extension에서 온 title이 현재 window title에 포함되는지 확인
+                # 다른 프로필/창에서 온 URL 무시 (비활성 창의 URL이 섞이는 문제 방지)
+                ext_title = chrome_data.get('title', '')
+                window_title = window_info['window_title']
+
+                if ext_title and ext_title not in window_title:
+                    print(f"[MonitorEngine] Chrome URL 무시 (title 불일치) - ext: '{ext_title}' vs window: '{window_title}'")
+                    chrome_data = None
+                else:
+                    profile = chrome_data.get('profile', 'N/A')
+                    url = chrome_data.get('url', 'N/A')
+                    print(f"[MonitorEngine] Chrome 감지 - 프로필: [{profile}] URL: {url}")
 
         return {
             'process_name': window_info['process_name'],

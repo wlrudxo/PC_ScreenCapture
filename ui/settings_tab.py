@@ -19,11 +19,12 @@ class SettingsTab(QWidget):
     - 데이터 관리 (DB 백업/복원, 룰 Import/Export)
     """
 
-    def __init__(self, db_manager, rule_engine):
+    def __init__(self, db_manager, rule_engine, monitor_engine=None):
         super().__init__()
 
         self.db_manager = db_manager
         self.rule_engine = rule_engine
+        self.monitor_engine = monitor_engine
         self.import_export_manager = ImportExportManager(db_manager)
 
         # UI 구성 (세로 레이아웃)
@@ -185,17 +186,31 @@ class SettingsTab(QWidget):
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
-            success, message = self.import_export_manager.import_database(file_path)
+            # 모니터링 중단 콜백 (QThread는 재시작 불가하므로 stop만)
+            def stop_monitoring():
+                if self.monitor_engine:
+                    self.monitor_engine.stop()
+                    print("[SettingsTab] 모니터링 중단 (DB 복원용)")
+
+            success, message = self.import_export_manager.import_database(
+                file_path,
+                pause_callback=stop_monitoring,
+                resume_callback=None  # QThread 재시작 불가, 앱 재시작 필요
+            )
 
             if success:
                 QMessageBox.information(
                     self, "복원 완료",
-                    message
+                    message + "\n\n지금 앱을 종료합니다."
                 )
+                # 앱 종료 (재시작 필요)
+                from PyQt6.QtWidgets import QApplication
+                QApplication.quit()
             else:
+                # 실패 시에도 모니터링이 중단된 상태이므로 재시작 안내
                 QMessageBox.critical(
                     self, "복원 실패",
-                    message
+                    message + "\n\n모니터링이 중단되었습니다. 앱을 재시작해주세요."
                 )
 
         except Exception as e:

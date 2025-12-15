@@ -506,6 +506,7 @@ class PeriodStatsWidget(QWidget):
             # 각 날짜별로 태그 통계 수집
             all_data = {}  # {date: {tag_name: seconds}}
             all_tags = set()
+            tag_colors = {}  # {tag_name: color} - 색상 캐시
 
             for date in date_range:
                 start = datetime.combine(date, datetime.min.time())
@@ -521,11 +522,14 @@ class PeriodStatsWidget(QWidget):
                         seconds = stat['total_seconds'] or 0
                         day_data[tag_name] = seconds
                         all_tags.add(tag_name)
+                        # 색상 캐시 (한 번만 저장)
+                        if tag_name not in tag_colors:
+                            tag_colors[tag_name] = stat['tag_color']
 
                 all_data[date] = day_data
 
-            # 차트 및 테이블 업데이트
-            self.update_stacked_chart(date_range, all_data, all_tags)
+            # 차트 및 테이블 업데이트 (색상 캐시 전달)
+            self.update_stacked_chart(date_range, all_data, all_tags, tag_colors)
             self.update_stats_table(date_range, all_data, all_tags)
 
             # 기간별 통계 요약 업데이트
@@ -534,7 +538,7 @@ class PeriodStatsWidget(QWidget):
         except Exception as e:
             print(f"[PeriodStatsWidget] 통계 갱신 오류: {e}")
 
-    def update_stacked_chart(self, date_range, all_data, all_tags):
+    def update_stacked_chart(self, date_range, all_data, all_tags, tag_colors):
         """스택 바 차트 업데이트"""
         self.ax.clear()
 
@@ -558,16 +562,6 @@ class PeriodStatsWidget(QWidget):
 
         # 각 태그별로 바 그리기 (스택)
         bottom = [0] * len(date_range)
-
-        # 태그별 색상 가져오기
-        tag_colors = {}
-        for date in date_range:
-            start = datetime.combine(date, datetime.min.time())
-            end = start + timedelta(days=1)
-            tag_stats = self.db_manager.get_stats_by_tag(start, end)
-            for stat in tag_stats:
-                if stat['tag_name'] not in tag_colors:
-                    tag_colors[stat['tag_name']] = stat['tag_color']
 
         for tag in sorted_tags:
             values = []

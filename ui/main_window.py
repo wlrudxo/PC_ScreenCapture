@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(TimelineTab(self.db_manager, self.monitor_engine), "⏱️ 타임라인")
         self.tabs.addTab(TagManagementTab(self.db_manager, self.rule_engine), "🏷️ 태그 관리")
         self.tabs.addTab(NotificationTab(self.db_manager), "🔔 알림")
-        self.tabs.addTab(SettingsTab(self.db_manager, self.rule_engine), "⚙️ 설정")
+        self.tabs.addTab(SettingsTab(self.db_manager, self.rule_engine, self.monitor_engine), "⚙️ 설정")
 
         self.setCentralWidget(self.tabs)
 

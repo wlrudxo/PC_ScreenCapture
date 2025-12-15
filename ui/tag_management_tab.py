@@ -161,6 +161,10 @@ class TagManagementTab(QWidget):
             progress.setWindowModality(Qt.WindowModality.WindowModal)
             progress.setMinimumDuration(0)
 
+            # 미분류 태그 ID 한 번만 조회
+            unclassified_tag = self.db_manager.get_tag_by_name('미분류')
+            unclassified_tag_id = unclassified_tag['id']
+
             # 4. 재분류 실행
             reclassified_count = 0
             for i, activity in enumerate(unclassified_activities):
@@ -178,8 +182,7 @@ class TagManagementTab(QWidget):
                 tag_id, rule_id = self.rule_engine.match(activity_info)
 
                 # 미분류가 아닌 경우만 업데이트 (룰이 매치된 경우)
-                unclassified_tag = self.db_manager.get_tag_by_name('미분류')
-                if tag_id != unclassified_tag['id']:
+                if tag_id != unclassified_tag_id:
                     self.db_manager.update_activity_classification(
                         activity['id'], tag_id, rule_id
                     )

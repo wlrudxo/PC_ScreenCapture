@@ -33,7 +33,7 @@ class ImportExportManager:
 
     def export_database(self, backup_path: str) -> bool:
         """
-        데이터베이스 전체를 백업 파일로 Export
+        데이터베이스 전체를 백업 파일로 Export (SQLite backup API 사용)
 
         Args:
             backup_path: 백업 파일 경로 (.db 확장자)
@@ -41,6 +41,8 @@ class ImportExportManager:
         Returns:
             성공 여부
         """
+        import sqlite3
+
         try:
             backup_path = Path(backup_path)
 
@@ -48,13 +50,13 @@ class ImportExportManager:
             if backup_path.suffix.lower() != '.db':
                 backup_path = backup_path.with_suffix('.db')
 
-            # WAL 파일도 함께 백업 (일관성 보장)
-            # 먼저 체크포인트를 실행하여 WAL 내용을 메인 DB에 반영
-            self.db_manager.conn.execute("PRAGMA wal_checkpoint(FULL)")
-            self.db_manager.conn.commit()
-
-            # 메인 DB 파일 복사
-            shutil.copy2(self.db_path, backup_path)
+            # SQLite backup API를 사용하여 일관성 있는 스냅샷 생성
+            # 다른 스레드가 쓰기 중이어도 안전하게 백업 가능
+            backup_conn = sqlite3.connect(str(backup_path))
+            try:
+                self.db_manager.conn.backup(backup_conn)
+            finally:
+                backup_conn.close()
 
             print(f"[ImportExport] DB 백업 완료: {backup_path}")
             return True
@@ -63,7 +65,7 @@ class ImportExportManager:
             print(f"[ImportExport] DB 백업 실패: {e}")
             return False
 
-    def import_database(self, backup_path: str) -> Tuple[bool, str]:
+    def import_database(self, backup_path: str, pause_callback=None, resume_callback=None) -> Tuple[bool, str]:
         """
         백업 파일로 데이터베이스 복원
 
@@ -72,9 +74,11 @@ class ImportExportManager:
 
         Args:
             backup_path: 백업 파일 경로
+            pause_callback: 복원 전 호출할 일시정지 콜백 (모니터링 중단용)
+            resume_callback: 복원 후 호출할 재개 콜백 (모니터링 재시작용, 실패 시에만)
 
         Returns:
-            (성공 여부, 에러 메시지)
+            (성공 여부, 메시지)
         """
         try:
             backup_path = Path(backup_path)
@@ -91,16 +95,24 @@ class ImportExportManager:
             temp_backup = self.db_path.with_suffix('.db.tmp')
 
             try:
+                # 모니터링 일시정지 (DB 쓰기 중단)
+                if pause_callback:
+                    pause_callback()
+
                 # 모든 connection 닫기
                 self.db_manager.conn.close()
 
                 # 기존 DB 임시 백업
                 shutil.copy2(self.db_path, temp_backup)
 
-                # WAL 파일도 백업
+                # WAL 파일도 백업 및 삭제
                 wal_path = self.db_path.with_suffix('.db-wal')
+                shm_path = self.db_path.with_suffix('.db-shm')
                 if wal_path.exists():
                     shutil.copy2(wal_path, temp_backup.with_suffix('.db-wal.tmp'))
+                    wal_path.unlink()
+                if shm_path.exists():
+                    shm_path.unlink()
 
                 # 새 DB로 교체
                 shutil.copy2(backup_path, self.db_path)
@@ -114,10 +126,17 @@ class ImportExportManager:
                 return True, "데이터베이스가 복원되었습니다.\n앱을 재시작해야 변경사항이 적용됩니다."
 
             except Exception as e:
-                # 롤백
+                # 롤백: 임시 백업에서 원본 복원
                 if temp_backup.exists():
                     shutil.copy2(temp_backup, self.db_path)
                     temp_backup.unlink()
+                    if temp_backup.with_suffix('.db-wal.tmp').exists():
+                        shutil.copy2(temp_backup.with_suffix('.db-wal.tmp'), wal_path)
+                        temp_backup.with_suffix('.db-wal.tmp').unlink()
+                # Note: QThread는 재시작 불가하므로 resume_callback은 보통 None
+                # 호출자가 앱 재시작을 안내해야 함
+                if resume_callback:
+                    resume_callback()
                 raise e
 
         except Exception as e:

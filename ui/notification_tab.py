@@ -72,18 +72,23 @@ class NotificationTab(QWidget):
         group = QGroupBox("알림음")
         layout = QVBoxLayout()
 
-        # 알림음 사용 체크박스
+        # 토글 체크박스들 (한 줄에 배치)
+        toggle_layout = QHBoxLayout()
+
         self.sound_checkbox = QCheckBox("알림음 사용")
         self.sound_checkbox.setChecked(
             self.db_manager.get_setting('alert_sound_enabled', '0') == '1'
         )
         self.sound_checkbox.stateChanged.connect(self._on_sound_enabled_changed)
 
-        # 랜덤 재생 체크박스
-        self.random_checkbox = QCheckBox("랜덤 재생 (체크 해제 시 선택한 사운드 재생)")
+        self.random_checkbox = QCheckBox("랜덤 재생")
         current_mode = self.db_manager.get_setting('alert_sound_mode', 'single')
         self.random_checkbox.setChecked(current_mode == 'random')
         self.random_checkbox.stateChanged.connect(self._on_sound_mode_changed)
+
+        toggle_layout.addWidget(self.sound_checkbox)
+        toggle_layout.addWidget(self.random_checkbox)
+        toggle_layout.addStretch()
 
         # 사운드 목록
         self.sound_list = QListWidget()
@@ -111,8 +116,7 @@ class NotificationTab(QWidget):
         hint_label = QLabel("MP3, WAV, OGG, FLAC 지원 (WAV로 자동 변환). 사운드가 없으면 시스템 기본음 재생.")
         hint_label.setStyleSheet("color: #888; font-size: 9pt;")
 
-        layout.addWidget(self.sound_checkbox)
-        layout.addWidget(self.random_checkbox)
+        layout.addLayout(toggle_layout)
         layout.addWidget(self.sound_list)
         layout.addLayout(btn_layout)
         layout.addWidget(hint_label)
@@ -125,18 +129,23 @@ class NotificationTab(QWidget):
         group = QGroupBox("알림 이미지")
         layout = QVBoxLayout()
 
-        # 이미지 사용 체크박스
-        self.image_checkbox = QCheckBox("토스트에 이미지 표시")
+        # 토글 체크박스들 (한 줄에 배치)
+        img_toggle_layout = QHBoxLayout()
+
+        self.image_checkbox = QCheckBox("이미지 표시")
         self.image_checkbox.setChecked(
             self.db_manager.get_setting('alert_image_enabled', '0') == '1'
         )
         self.image_checkbox.stateChanged.connect(self._on_image_enabled_changed)
 
-        # 랜덤 표시 체크박스
-        self.image_random_checkbox = QCheckBox("랜덤 표시 (체크 해제 시 선택한 이미지 표시)")
+        self.image_random_checkbox = QCheckBox("랜덤 표시")
         current_mode = self.db_manager.get_setting('alert_image_mode', 'single')
         self.image_random_checkbox.setChecked(current_mode == 'random')
         self.image_random_checkbox.stateChanged.connect(self._on_image_mode_changed)
+
+        img_toggle_layout.addWidget(self.image_checkbox)
+        img_toggle_layout.addWidget(self.image_random_checkbox)
+        img_toggle_layout.addStretch()
 
         # 이미지 목록
         self.image_list = QListWidget()
@@ -164,8 +173,7 @@ class NotificationTab(QWidget):
         hint_label = QLabel("PNG, JPG 지원. 2:1 비율로 크롭됩니다. 이미지가 없으면 토스트에 이미지 없이 표시.")
         hint_label.setStyleSheet("color: #888; font-size: 9pt;")
 
-        layout.addWidget(self.image_checkbox)
-        layout.addWidget(self.image_random_checkbox)
+        layout.addLayout(img_toggle_layout)
         layout.addWidget(self.image_list)
         layout.addLayout(btn_layout)
         layout.addWidget(hint_label)

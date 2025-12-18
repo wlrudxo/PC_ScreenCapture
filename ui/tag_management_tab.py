@@ -28,17 +28,18 @@ class TagManagementTab(QWidget):
         layout.setSpacing(20)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # 미분류 재분류 버튼 (최상단)
+        # 미분류 재분류/삭제 버튼 (최상단)
         reclassify_layout = QHBoxLayout()
         reclassify_btn = QPushButton("미분류 항목 재분류")
         reclassify_btn.setToolTip("현재 룰을 적용해 미분류 항목을 자동으로 분류합니다")
         reclassify_btn.clicked.connect(self.on_reclassify_untagged)
 
-        reclassify_label = QLabel("현재 룰을 적용해 미분류 항목을 자동 분류")
-        reclassify_label.setStyleSheet("color: #888;")
+        delete_unclassified_btn = QPushButton("미분류 항목 삭제")
+        delete_unclassified_btn.setToolTip("미분류 항목을 선택하여 삭제합니다")
+        delete_unclassified_btn.clicked.connect(self.on_delete_unclassified)
 
         reclassify_layout.addWidget(reclassify_btn)
-        reclassify_layout.addWidget(reclassify_label)
+        reclassify_layout.addWidget(delete_unclassified_btn)
         reclassify_layout.addStretch()
 
         layout.addLayout(reclassify_layout)
@@ -203,6 +204,27 @@ class TagManagementTab(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "오류", f"재분류 중 오류 발생:\n{str(e)}")
+
+    def on_delete_unclassified(self):
+        """미분류 항목 삭제 다이얼로그 표시"""
+        try:
+            unclassified_activities = self.db_manager.get_unclassified_activities()
+            if not unclassified_activities:
+                QMessageBox.information(self, "미분류 항목 삭제", "삭제할 미분류 항목이 없습니다.")
+                return
+
+            dialog = UnclassifiedDeleteDialog(unclassified_activities, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                ids_to_delete = dialog.get_selected_ids()
+                if ids_to_delete:
+                    self.db_manager.delete_activities(ids_to_delete)
+                    QMessageBox.information(
+                        self, "삭제 완료",
+                        f"{len(ids_to_delete)}개의 활동 기록이 삭제되었습니다."
+                    )
+
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"삭제 중 오류 발생:\n{str(e)}")
 
     # === 태그 관리 ===
     def load_tags(self):
@@ -677,3 +699,146 @@ class RuleEditDialog(QDialog):
             'process_path_pattern': self.process_path_edit.text().strip() or None,
             'tag_id': self.tag_combo.currentData(),
         }
+
+
+class UnclassifiedDeleteDialog(QDialog):
+    """미분류 항목 삭제 다이얼로그"""
+
+    def __init__(self, activities, parent=None):
+        super().__init__(parent)
+        self.activities = activities
+        self.grouped_data = {}  # key -> list of activity ids
+
+        self.setWindowTitle("미분류 항목 삭제")
+        self.setMinimumSize(800, 500)
+
+        layout = QVBoxLayout()
+
+        # 안내 문구
+        info_label = QLabel(f"미분류 항목 {len(activities)}개 (동일 항목 그룹화됨)")
+        info_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(info_label)
+
+        # 테이블
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["선택", "프로세스", "창 제목", "URL", "개수"])
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+
+        self.table.setAlternatingRowColors(True)
+        layout.addWidget(self.table)
+
+        # 그룹화하여 테이블 채우기
+        self._group_and_populate()
+
+        # 전체 선택/해제 버튼
+        btn_layout = QHBoxLayout()
+        select_all_btn = QPushButton("전체 선택")
+        select_all_btn.clicked.connect(self._select_all)
+        deselect_all_btn = QPushButton("전체 해제")
+        deselect_all_btn.clicked.connect(self._deselect_all)
+
+        btn_layout.addWidget(select_all_btn)
+        btn_layout.addWidget(deselect_all_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        # 확인/취소 버튼
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("삭제")
+        buttons.accepted.connect(self._confirm_delete)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+    def _group_and_populate(self):
+        """동일 항목 그룹화 및 테이블 채우기"""
+        # 프로세스+제목+URL 조합으로 그룹화
+        for act in self.activities:
+            key = (
+                act.get('process_name') or '',
+                act.get('window_title') or '',
+                act.get('chrome_url') or ''
+            )
+            if key not in self.grouped_data:
+                self.grouped_data[key] = []
+            self.grouped_data[key].append(act['id'])
+
+        # 개수 내림차순 정렬
+        sorted_groups = sorted(self.grouped_data.items(), key=lambda x: len(x[1]), reverse=True)
+
+        self.table.setRowCount(len(sorted_groups))
+        self.checkboxes = []
+
+        for row, (key, ids) in enumerate(sorted_groups):
+            process, title, url = key
+
+            # 체크박스
+            checkbox = QCheckBox()
+            checkbox.setProperty('ids', ids)
+            self.checkboxes.append(checkbox)
+            checkbox_widget = QWidget()
+            checkbox_layout = QHBoxLayout(checkbox_widget)
+            checkbox_layout.addWidget(checkbox)
+            checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            checkbox_layout.setContentsMargins(0, 0, 0, 0)
+            self.table.setCellWidget(row, 0, checkbox_widget)
+
+            # 프로세스
+            self.table.setItem(row, 1, QTableWidgetItem(process or '-'))
+
+            # 창 제목 (길면 자르기)
+            title_display = title[:50] + '...' if len(title) > 50 else title
+            title_item = QTableWidgetItem(title_display or '-')
+            title_item.setToolTip(title)
+            self.table.setItem(row, 2, title_item)
+
+            # URL (길면 자르기)
+            url_display = url[:50] + '...' if len(url) > 50 else url
+            url_item = QTableWidgetItem(url_display or '-')
+            url_item.setToolTip(url)
+            self.table.setItem(row, 3, url_item)
+
+            # 개수
+            self.table.setItem(row, 4, QTableWidgetItem(str(len(ids))))
+
+    def _select_all(self):
+        for cb in self.checkboxes:
+            cb.setChecked(True)
+
+    def _deselect_all(self):
+        for cb in self.checkboxes:
+            cb.setChecked(False)
+
+    def _confirm_delete(self):
+        """삭제 확인"""
+        selected_count = sum(len(cb.property('ids')) for cb in self.checkboxes if cb.isChecked())
+        if selected_count == 0:
+            QMessageBox.warning(self, "알림", "삭제할 항목을 선택하세요.")
+            return
+
+        reply = QMessageBox.question(
+            self, "삭제 확인",
+            f"{selected_count}개의 활동 기록을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.accept()
+
+    def get_selected_ids(self):
+        """선택된 항목들의 ID 목록 반환"""
+        ids = []
+        for cb in self.checkboxes:
+            if cb.isChecked():
+                ids.extend(cb.property('ids'))
+        return ids

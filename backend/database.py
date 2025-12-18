@@ -518,6 +518,15 @@ class DatabaseManager:
         """, (tag_id, rule_id, activity_id))
         self.conn.commit()
 
+    def delete_activities(self, activity_ids: List[int]):
+        """활동 기록 삭제"""
+        if not activity_ids:
+            return
+        cursor = self.conn.cursor()
+        placeholders = ','.join('?' * len(activity_ids))
+        cursor.execute(f"DELETE FROM activities WHERE id IN ({placeholders})", activity_ids)
+        self.conn.commit()
+
     # === 전역 설정 ===
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """설정 값 조회"""

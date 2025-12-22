@@ -4,7 +4,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QPushButton, QGroupBox, QDialog, QCheckBox,
                             QMessageBox, QFileDialog, QDialogButtonBox,
-                            QFormLayout)
+                            QFormLayout, QSpinBox)
 from PyQt6.QtCore import Qt
 from datetime import datetime
 
@@ -52,12 +52,38 @@ class SettingsTab(QWidget):
         self.auto_start_checkbox = QCheckBox("Windows 시작 시 자동 실행")
         self.auto_start_checkbox.setChecked(AutoStartManager.is_enabled())
         self.auto_start_checkbox.stateChanged.connect(self.on_auto_start_changed)
-
         layout.addWidget(self.auto_start_checkbox)
+
+        # 로그 보관 일수
+        log_layout = QHBoxLayout()
+        log_label = QLabel("활동 로그 보관 일수:")
+        self.log_days_spinbox = QSpinBox()
+        self.log_days_spinbox.setRange(7, 90)
+        self.log_days_spinbox.setSuffix("일")
+        self.log_days_spinbox.setToolTip("recent.log에 포함할 일수 (LLM 분석용)")
+
+        # DB에서 현재 값 로드
+        current_days = self.db_manager.get_setting('log_retention_days')
+        self.log_days_spinbox.setValue(int(current_days) if current_days else 30)
+        self.log_days_spinbox.valueChanged.connect(self.on_log_days_changed)
+
+        log_hint = QLabel("💡 activity_logs/recent.log")
+        log_hint.setStyleSheet("color: #888; font-size: 9pt;")
+
+        log_layout.addWidget(log_label)
+        log_layout.addWidget(self.log_days_spinbox)
+        log_layout.addWidget(log_hint)
+        log_layout.addStretch()
+        layout.addLayout(log_layout)
+
         layout.addStretch()
 
         group.setLayout(layout)
         return group
+
+    def on_log_days_changed(self, value):
+        """로그 보관 일수 변경"""
+        self.db_manager.set_setting('log_retention_days', str(value))
 
     def on_auto_start_changed(self, state):
         """자동 시작 설정 변경"""

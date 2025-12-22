@@ -13,6 +13,7 @@ config.json
 
 # 로그
 logs/
+activity_logs/
 *.log
 
 # 테스트 파일

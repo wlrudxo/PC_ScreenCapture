@@ -4,9 +4,12 @@
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QMessageBox
 from PyQt6.QtCore import pyqtSlot
 
+import threading
+
 from backend.database import DatabaseManager
 from backend.rule_engine import RuleEngine
 from backend.monitor_engine import MonitorEngine
+from backend.log_generator import ActivityLogGenerator
 from ui.tray_icon import SystemTrayIcon
 
 
@@ -50,7 +53,23 @@ class MainWindow(QMainWindow):
         self.tray_icon.quit_requested.connect(self.quit_application)
         self.tray_icon.show()
 
+        # 활동 로그 생성 (백그라운드)
+        self._start_log_generation()
+
         print("[MainWindow] 초기화 완료")
+
+    def _start_log_generation(self):
+        """백그라운드에서 활동 로그 갱신"""
+        def generate_logs():
+            try:
+                log_gen = ActivityLogGenerator(self.db_manager)
+                log_gen.update_all_logs()
+                print("[MainWindow] 활동 로그 갱신 완료")
+            except Exception as e:
+                print(f"[MainWindow] 활동 로그 갱신 실패: {e}")
+
+        thread = threading.Thread(target=generate_logs, daemon=True)
+        thread.start()
 
     def create_tabs(self):
         """탭 위젯 생성"""

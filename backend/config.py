@@ -75,3 +75,29 @@ class AppConfig:
         sounds_dir = AppConfig.get_app_dir() / "sounds"
         sounds_dir.mkdir(exist_ok=True)
         return sounds_dir
+
+    @staticmethod
+    def get_activity_logs_dir():
+        """활동 로그 디렉토리 (LLM 분석용)"""
+        logs_dir = AppConfig.get_app_dir() / "activity_logs"
+        logs_dir.mkdir(exist_ok=True)
+        return logs_dir
+
+    @staticmethod
+    def get_daily_logs_dir():
+        """일별 로그 디렉토리"""
+        daily_dir = AppConfig.get_activity_logs_dir() / "daily"
+        daily_dir.mkdir(exist_ok=True)
+        return daily_dir
+
+    @staticmethod
+    def get_monthly_logs_dir():
+        """월별 아카이브 디렉토리"""
+        monthly_dir = AppConfig.get_activity_logs_dir() / "monthly"
+        monthly_dir.mkdir(exist_ok=True)
+        return monthly_dir
+
+    @staticmethod
+    def get_recent_log_path():
+        """최근 N일 통합 로그 경로"""
+        return AppConfig.get_activity_logs_dir() / "recent.log"

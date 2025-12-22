@@ -65,16 +65,19 @@ class ActivityLogGenerator:
         lines.append(f"- 태그 전환 횟수: {summary['tag_switches']}회")
         lines.append("")
 
-        # 태그별 시간
+        # 태그별 시간 (자리비움 제외)
         tag_stats = self.db.get_stats_by_tag(start_dt, end_dt)
         if tag_stats:
-            lines.append("[태그별 시간]")
-            total_secs = sum(t['total_seconds'] or 0 for t in tag_stats)
-            for ts in tag_stats:
-                secs = ts['total_seconds'] or 0
-                pct = (secs / total_secs * 100) if total_secs > 0 else 0
-                lines.append(f"- {ts['tag_name']}: {self._format_duration(secs)} ({pct:.0f}%)")
-            lines.append("")
+            # 자리비움 제외하고 필터링
+            filtered_stats = [t for t in tag_stats if t['tag_name'] != '자리비움']
+            if filtered_stats:
+                lines.append("[태그별 시간]")
+                total_secs = sum(t['total_seconds'] or 0 for t in filtered_stats)
+                for ts in filtered_stats:
+                    secs = ts['total_seconds'] or 0
+                    pct = (secs / total_secs * 100) if total_secs > 0 else 0
+                    lines.append(f"- {ts['tag_name']}: {self._format_duration(secs)} ({pct:.0f}%)")
+                lines.append("")
 
         # 프로세스 TOP 10
         proc_stats = self.db.get_stats_by_process(start_dt, end_dt, limit=10)
@@ -140,7 +143,8 @@ class ActivityLogGenerator:
         sorted_acts = sorted(activities, key=lambda x: x['start_time'])
 
         first = sorted_acts[0]['start_time']
-        last = sorted_acts[-1]['end_time'] or sorted_acts[-1]['start_time']
+        # 마지막 활동은 start_time 기준 (end_time이 다음 날일 수 있음)
+        last = sorted_acts[-1]['start_time']
 
         if isinstance(first, str):
             first = datetime.fromisoformat(first)
@@ -267,8 +271,9 @@ class ActivityLogGenerator:
         return {k: dict(v) for k, v in result.items() if v}
 
     def _get_away_records(self, activities: List[Dict]) -> List[Dict]:
-        """자리비움 기록"""
+        """자리비움 기록 (5분 이상만)"""
         records = []
+        MIN_AWAY_SECONDS = 300  # 5분
 
         for act in activities:
             if act.get('process_name') not in ('__LOCKED__', '__IDLE__'):
@@ -282,6 +287,10 @@ class ActivityLogGenerator:
                 end = datetime.fromisoformat(end)
 
             secs = (end - start).total_seconds()
+            # 5분 미만은 무시
+            if secs < MIN_AWAY_SECONDS:
+                continue
+
             records.append({
                 'start': start.strftime('%H:%M'),
                 'end': end.strftime('%H:%M'),

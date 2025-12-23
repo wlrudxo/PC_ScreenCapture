@@ -45,88 +45,73 @@ class ActivityLogGenerator:
         return self._format_daily_log(target_date, activities)
 
     def _format_daily_log(self, target_date: date, activities: List[Dict]) -> str:
-        """일별 로그 포맷팅"""
+        """일별 로그 포맷팅 (압축 형식)"""
         weekday = self.WEEKDAYS_KR[target_date.weekday()]
         start_dt = datetime.combine(target_date, datetime.min.time())
         end_dt = start_dt + timedelta(days=1)
 
         lines = []
-        lines.append("=" * 70)
-        lines.append(f"Activity Log: {target_date.isoformat()} ({weekday})")
-        lines.append("=" * 70)
-        lines.append("")
+        lines.append(f"--- {target_date.isoformat()} ({weekday}) ---")
 
         # 요약
         summary = self._get_summary(activities)
-        lines.append("[요약]")
-        lines.append(f"- 첫 활동: {summary['first_time']}")
-        lines.append(f"- 마지막 활동: {summary['last_time']}")
-        lines.append(f"- 총 활동 시간: {summary['total_active']} (자리비움 제외)")
-        lines.append(f"- 태그 전환 횟수: {summary['tag_switches']}회")
-        lines.append("")
+        lines.append(f"[요약] 첫활동:{summary['first_time']} 마지막:{summary['last_time']} 활동:{summary['total_active']} 전환:{summary['tag_switches']}회")
 
         # 태그별 시간 (자리비움 제외)
         tag_stats = self.db.get_stats_by_tag(start_dt, end_dt)
         if tag_stats:
-            # 자리비움 제외하고 필터링
             filtered_stats = [t for t in tag_stats if t['tag_name'] != '자리비움']
             if filtered_stats:
-                lines.append("[태그별 시간]")
                 total_secs = sum(t['total_seconds'] or 0 for t in filtered_stats)
+                tag_parts = []
                 for ts in filtered_stats:
                     secs = ts['total_seconds'] or 0
                     pct = (secs / total_secs * 100) if total_secs > 0 else 0
-                    lines.append(f"- {ts['tag_name']}: {self._format_duration(secs)} ({pct:.0f}%)")
-                lines.append("")
+                    tag_parts.append(f"{ts['tag_name']}:{self._format_duration(secs)}({pct:.0f}%)")
+                lines.append(f"[태그별] {' '.join(tag_parts)}")
 
         # 프로세스 TOP 10
         proc_stats = self.db.get_stats_by_process(start_dt, end_dt, limit=10)
         if proc_stats:
-            lines.append("[프로세스 TOP 10]")
-            for i, ps in enumerate(proc_stats, 1):
-                lines.append(f"{i:2}. {ps['process_name']} - {self._format_duration(ps['total_seconds'])}")
-            lines.append("")
+            proc_parts = [f"{ps['process_name']}:{self._format_duration(ps['total_seconds'])}" for ps in proc_stats]
+            lines.append(f"[프로세스] {' '.join(proc_parts)}")
 
         # 주요 웹사이트
         url_stats = self._get_url_stats(activities)
         if url_stats:
-            lines.append("[주요 웹사이트]")
-            for i, (domain, secs) in enumerate(url_stats[:7], 1):
-                lines.append(f"{i}. {domain} - {self._format_duration(secs)}")
-            lines.append("")
+            url_parts = [f"{domain}:{self._format_duration(secs)}" for domain, secs in url_stats[:7]]
+            lines.append(f"[웹사이트] {' '.join(url_parts)}")
 
-        # 주요 활동 상세
+        # 주요 활동 상세 (자리비움 제외)
         activity_details = self._get_activity_details(activities)
-        if activity_details:
-            lines.append("[주요 활동 상세]")
-            for title, tag, secs in activity_details[:10]:
-                short_title = title[:50] + "..." if len(title) > 50 else title
-                lines.append(f'- "{short_title}" ({tag}) - {self._format_duration(secs)}')
-            lines.append("")
+        filtered_details = [(t, tag, s) for t, tag, s in activity_details if tag != '자리비움']
+        if filtered_details:
+            detail_parts = []
+            for title, tag, secs in filtered_details[:10]:
+                short_title = title[:40] + "..." if len(title) > 40 else title
+                detail_parts.append(f'"{short_title}"({tag}):{self._format_duration(secs)}')
+            lines.append(f"[활동상세] {' '.join(detail_parts)}")
 
         # 시간대별 분포
         hourly = self._get_hourly_distribution(activities)
-        lines.append("[시간대별 분포]")
-        for period, stats in hourly.items():
-            if stats:
-                stat_str = ", ".join(f"{tag} {self._format_duration(secs)}" for tag, secs in stats.items())
-                lines.append(f"- {period}: {stat_str}")
-        lines.append("")
+        if hourly:
+            hourly_parts = []
+            for period, stats in hourly.items():
+                if stats:
+                    stat_str = ",".join(f"{tag}{self._format_duration(secs)}" for tag, secs in stats.items())
+                    hourly_parts.append(f"{period}:{stat_str}")
+            lines.append(f"[시간대] {' '.join(hourly_parts)}")
 
         # 자리비움 기록
         away_records = self._get_away_records(activities)
         if away_records:
-            lines.append("[자리비움 기록]")
-            total_away = 0
-            for record in away_records[:5]:  # 최대 5개
-                lines.append(f"- {record['start']}-{record['end']} ({record['duration']})")
-                total_away += record['seconds']
+            total_away = sum(r['seconds'] for r in away_records)
+            away_parts = [f"{r['start']}-{r['end']}({r['duration']})" for r in away_records[:5]]
             if len(away_records) > 5:
-                lines.append(f"  ... 외 {len(away_records) - 5}건")
-            lines.append(f"- 총 자리비움: {self._format_duration(total_away)}")
-            lines.append("")
+                away_parts.append(f"외{len(away_records)-5}건")
+            away_parts.append(f"총:{self._format_duration(total_away)}")
+            lines.append(f"[자리비움] {' '.join(away_parts)}")
 
-        lines.append("")
         return "\n".join(lines)
 
     def _get_summary(self, activities: List[Dict]) -> Dict[str, Any]:
@@ -302,7 +287,7 @@ class ActivityLogGenerator:
         return records
 
     def _format_duration(self, seconds: float) -> str:
-        """초를 시:분 형식으로"""
+        """초를 시:분 형식으로 (공백 없이)"""
         if seconds is None or seconds < 0:
             seconds = 0
 
@@ -310,7 +295,7 @@ class ActivityLogGenerator:
         minutes = int((seconds % 3600) // 60)
 
         if hours > 0:
-            return f"{hours}시간 {minutes}분"
+            return f"{hours}시간{minutes}분"
         return f"{minutes}분"
 
     def save_daily_log(self, target_date: date) -> Path:
@@ -326,11 +311,7 @@ class ActivityLogGenerator:
         today = date.today()
 
         lines = []
-        lines.append("=" * 70)
-        lines.append(f"Activity Log - 최근 {retention}일")
-        lines.append(f"생성일시: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        lines.append("=" * 70)
-        lines.append("")
+        lines.append(f"=== 최근 {retention}일 활동로그 (생성: {datetime.now().strftime('%Y-%m-%d %H:%M')}) ===")
 
         for i in range(1, retention + 1):
             target = today - timedelta(days=i)
@@ -346,10 +327,7 @@ class ActivityLogGenerator:
         _, last_day = calendar.monthrange(year, month)
 
         lines = []
-        lines.append("=" * 70)
-        lines.append(f"Monthly Activity Log: {year}-{month:02d}")
-        lines.append("=" * 70)
-        lines.append("")
+        lines.append(f"=== {year}-{month:02d} 월간 활동로그 ===")
 
         for day in range(1, last_day + 1):
             target = date(year, month, day)

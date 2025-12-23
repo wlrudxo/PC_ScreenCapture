@@ -2,7 +2,8 @@
 메인 윈도우
 """
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QMessageBox
-from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtCore import pyqtSlot, QTimer
+from datetime import date
 
 import threading
 
@@ -56,6 +57,12 @@ class MainWindow(QMainWindow):
         # 활동 로그 생성 (백그라운드)
         self._start_log_generation()
 
+        # 날짜 변경 감지 타이머 (1분마다 체크)
+        self._last_log_date = date.today()
+        self._date_check_timer = QTimer(self)
+        self._date_check_timer.timeout.connect(self._check_date_change)
+        self._date_check_timer.start(60000)
+
         print("[MainWindow] 초기화 완료")
 
     def _start_log_generation(self):
@@ -70,6 +77,14 @@ class MainWindow(QMainWindow):
 
         thread = threading.Thread(target=generate_logs, daemon=True)
         thread.start()
+
+    def _check_date_change(self):
+        """날짜 변경 시 로그 갱신"""
+        today = date.today()
+        if today != self._last_log_date:
+            print(f"[MainWindow] 날짜 변경 감지: {self._last_log_date} → {today}")
+            self._last_log_date = today
+            self._start_log_generation()
 
     def create_tabs(self):
         """탭 위젯 생성"""

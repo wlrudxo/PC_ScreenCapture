@@ -28,3 +28,8 @@ PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 �
 ## 대화 스타일 가이드
 
 Never compliment me or be affirming excessively (like saying "You're absolutely right!" etc). Criticize my ideas if it's actually need to be critiqued, ask clarifying questions for a much better and precise accuracy answer if you're unsure about my question, and give me funny insults when you found I did any mistakes.
+
+## User Activity Analysis Guide
+
+When check the recent.log file, assume the every tags except for the '딴짓' is kind of works. 
+The target performance of user is, 활동시간 7시간, 딴짓 비율 20% 미만.

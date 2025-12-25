@@ -38,8 +38,14 @@ class TagManagementTab(QWidget):
         delete_unclassified_btn.setToolTip("미분류 항목을 선택하여 삭제합니다")
         delete_unclassified_btn.clicked.connect(self.on_delete_unclassified)
 
+        reclassify_all_btn = QPushButton("⚠ 모든 태그 재분류")
+        reclassify_all_btn.setToolTip("모든 활동을 현재 룰에 따라 재분류합니다 (시간이 오래 걸릴 수 있음)")
+        reclassify_all_btn.setStyleSheet("QPushButton { color: #d9534f; font-weight: bold; }")
+        reclassify_all_btn.clicked.connect(self.on_reclassify_all)
+
         reclassify_layout.addWidget(reclassify_btn)
         reclassify_layout.addWidget(delete_unclassified_btn)
+        reclassify_layout.addWidget(reclassify_all_btn)
         reclassify_layout.addStretch()
 
         layout.addLayout(reclassify_layout)
@@ -201,6 +207,86 @@ class TagManagementTab(QWidget):
                 f"- 재분류됨: {reclassified_count}개\n"
                 f"- 여전히 미분류: {still_unclassified}개"
             )
+
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"재분류 중 오류 발생:\n{str(e)}")
+
+    def on_reclassify_all(self):
+        """모든 활동 재분류 (룰 변경 시 사용)"""
+        try:
+            # 1. 전체 활동 개수 확인
+            total_count = self.db_manager.get_activities_count()
+
+            if total_count == 0:
+                QMessageBox.information(self, "모든 태그 재분류", "재분류할 활동이 없습니다.")
+                return
+
+            # 2. 경고 다이얼로그
+            reply = QMessageBox.warning(
+                self, "⚠ 모든 태그 재분류",
+                f"<b>정말 모든 활동({total_count:,}개)을 재분류하시겠습니까?</b><br><br>"
+                f"<span style='color: #d9534f;'>⚠ 이 작업은 시간이 오래 걸릴 수 있습니다.</span><br><br>"
+                f"<b>용도:</b> 분류 룰을 수정/추가한 후 기존 데이터에 새 룰을 적용할 때 사용하세요.<br><br>"
+                f"※ 모든 활동의 태그가 현재 룰에 따라 변경됩니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No  # 기본 선택: No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # 3. 활동 데이터 로드
+            all_activities = self.db_manager.get_all_activities_for_reclassify()
+            count = len(all_activities)
+
+            # 4. 진행률 다이얼로그
+            progress = QProgressDialog("모든 활동 재분류 중...", "취소", 0, count, self)
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+
+            # 5. 재분류 실행
+            reclassified_count = 0
+            for i, activity in enumerate(all_activities):
+                if progress.wasCanceled():
+                    break
+
+                # 활동 정보로 룰 매칭
+                activity_info = {
+                    'process_name': activity['process_name'],
+                    'window_title': activity['window_title'],
+                    'chrome_url': activity['chrome_url'],
+                    'chrome_profile': activity['chrome_profile']
+                }
+
+                tag_id, rule_id = self.rule_engine.match(activity_info)
+
+                # 태그 업데이트
+                self.db_manager.update_activity_classification(
+                    activity['id'], tag_id, rule_id
+                )
+                reclassified_count += 1
+
+                # 진행률 업데이트 (100개마다)
+                if i % 100 == 0:
+                    progress.setValue(i)
+
+            progress.setValue(count)
+            progress.close()
+
+            # 6. 결과 표시
+            if progress.wasCanceled():
+                QMessageBox.information(
+                    self, "재분류 중단",
+                    f"재분류가 취소되었습니다.\n\n"
+                    f"- 재분류됨: {reclassified_count:,}개\n"
+                    f"- 미처리: {count - reclassified_count:,}개"
+                )
+            else:
+                QMessageBox.information(
+                    self, "재분류 완료",
+                    f"모든 활동 재분류 완료!\n\n"
+                    f"- 총 재분류: {reclassified_count:,}개"
+                )
 
         except Exception as e:
             QMessageBox.critical(self, "오류", f"재분류 중 오류 발생:\n{str(e)}")

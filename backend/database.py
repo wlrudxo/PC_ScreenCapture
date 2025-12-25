@@ -325,26 +325,35 @@ class DatabaseManager:
         return affected_rows
 
     def get_activities(self, start_date: datetime, end_date: datetime,
-                       tag_id: Optional[int] = None) -> List[Dict[str, Any]]:
+                       tag_id: Optional[int] = None,
+                       limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """기간별 활동 조회"""
         cursor = self.conn.cursor()
 
         if tag_id:
-            cursor.execute("""
+            query = """
                 SELECT a.*, t.name as tag_name, t.color as tag_color
                 FROM activities a
                 LEFT JOIN tags t ON a.tag_id = t.id
                 WHERE a.start_time >= ? AND a.start_time < ? AND a.tag_id = ?
                 ORDER BY a.start_time DESC
-            """, (start_date, end_date, tag_id))
+            """
+            params = [start_date, end_date, tag_id]
         else:
-            cursor.execute("""
+            query = """
                 SELECT a.*, t.name as tag_name, t.color as tag_color
                 FROM activities a
                 LEFT JOIN tags t ON a.tag_id = t.id
                 WHERE a.start_time >= ? AND a.start_time < ?
                 ORDER BY a.start_time DESC
-            """, (start_date, end_date))
+            """
+            params = [start_date, end_date]
+
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        cursor.execute(query, params)
 
         return [dict(row) for row in cursor.fetchall()]
 
@@ -491,6 +500,22 @@ class DatabaseManager:
         self.conn.commit()
 
     # === 미분류 재분류 ===
+    def get_all_activities_for_reclassify(self) -> List[Dict[str, Any]]:
+        """모든 활동 조회 (전체 재분류용)"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, process_name, window_title, chrome_url, chrome_profile
+            FROM activities
+            ORDER BY start_time DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_activities_count(self) -> int:
+        """전체 활동 개수 조회"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM activities")
+        return cursor.fetchone()[0]
+
     def get_unclassified_activities(self) -> List[Dict[str, Any]]:
         """미분류 태그를 가진 모든 활동 조회"""
         cursor = self.conn.cursor()

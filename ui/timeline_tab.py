@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QTableWidget, QTableWidgetItem, QDateEdit,
                             QPushButton, QComboBox, QGroupBox, QHeaderView)
-from PyQt6.QtCore import Qt, QDate, pyqtSlot, QRect
+from PyQt6.QtCore import Qt, QDate, pyqtSlot, QRect, QTimer
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
 
 from ui.date_navigation_widget import DateNavigationWidget
@@ -138,10 +138,17 @@ class TimelineTab(QWidget):
     def __init__(self, db_manager, monitor_engine=None):
         super().__init__()
 
+        self.MAX_TABLE_ROWS = 2000
+        self.REALTIME_REFRESH_DEBOUNCE_MS = 750
+
         self.db_manager = db_manager
         self.monitor_engine = monitor_engine
         self.selected_date = datetime.now().date()
         self.selected_tag = None  # None = 전체
+
+        self._monitor_connected = False
+        self._realtime_refresh_scheduled = False
+        self._has_loaded_once = False
 
         # UI 구성
         main_layout = QVBoxLayout()
@@ -165,12 +172,8 @@ class TimelineTab(QWidget):
         main_layout.addLayout(content_layout)
         self.setLayout(main_layout)
 
-        # 초기 데이터 로드
-        self.load_timeline()
-
-        # 실시간 업데이트 연결
-        if self.monitor_engine:
-            self.monitor_engine.activity_detected.connect(self.on_new_activity)
+        # 초기 데이터 로드는 실제로 보일 때(탭 선택 시) 수행
+        # (숨겨진 탭에서도 대량 렌더링이 발생해 앱이 멈추는 문제 방지)
 
     def create_filters(self):
         """필터 위젯"""
@@ -220,17 +223,28 @@ class TimelineTab(QWidget):
 
         # 컬럼 너비 설정
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # 제목/URL은 늘어남
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+
+        self.table.setColumnWidth(0, 90)
+        self.table.setColumnWidth(1, 90)
+        self.table.setColumnWidth(2, 180)
+        self.table.setColumnWidth(4, 130)
+        self.table.setColumnWidth(5, 90)
 
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
         layout.addWidget(self.table)
+
+        self.table_limit_label = QLabel("")
+        self.table_limit_label.setStyleSheet("color: #888;")
+        layout.addWidget(self.table_limit_label)
+
         group.setLayout(layout)
         return group
 
@@ -240,97 +254,174 @@ class TimelineTab(QWidget):
         for tag in tags:
             self.tag_combo.addItem(tag['name'], tag['id'])
 
+    def reload_tag_filter(self):
+        """태그 필터 콤보박스 갱신 (태그 추가/수정 반영)"""
+        current_tag_id = self.tag_combo.currentData()
+        self.tag_combo.blockSignals(True)
+        try:
+            self.tag_combo.clear()
+            self.tag_combo.addItem("전체 태그", None)
+            tags = self.db_manager.get_all_tags()
+            for tag in tags:
+                self.tag_combo.addItem(tag['name'], tag['id'])
+
+            idx = self.tag_combo.findData(current_tag_id)
+            if idx >= 0:
+                self.tag_combo.setCurrentIndex(idx)
+        finally:
+            self.tag_combo.blockSignals(False)
+
     def on_filter_changed(self):
         """필터 변경 이벤트"""
         self.selected_date = self.date_nav.get_date().toPyDate()
         self.selected_tag = self.tag_combo.currentData()
         self.load_timeline()
 
-    def load_timeline(self):
+    def load_timeline(self, *, realtime: bool = False):
         """타임라인 데이터 로드"""
         try:
             # 선택된 날짜의 활동 조회
             start = datetime.combine(self.selected_date, datetime.min.time())
             end = start + timedelta(days=1)
 
-            if self.selected_tag:
-                activities = self.db_manager.get_activities(start, end, tag_id=self.selected_tag)
+            if realtime:
+                limit = self.MAX_TABLE_ROWS
             else:
-                activities = self.db_manager.get_activities(start, end)
+                limit = None
 
-            self.populate_table(activities)
+            if self.selected_tag:
+                activities = self.db_manager.get_activities(start, end, tag_id=self.selected_tag, limit=limit)
+            else:
+                activities = self.db_manager.get_activities(start, end, limit=limit)
 
-            # 총 활동 시간 계산 및 업데이트 (자리비움 제외)
-            tag_stats = self.db_manager.get_stats_by_tag(start, end)
-            total_seconds = sum(s['total_seconds'] or 0 for s in tag_stats if s['tag_name'] != '자리비움')
-            self.total_time_label.setText(f"총 활동 시간: {format_duration(total_seconds)}")
+            self.populate_table(activities, update_bar=not realtime)
+
+            if not realtime:
+                # 총 활동 시간 계산 및 업데이트 (자리비움 제외)
+                tag_stats = self.db_manager.get_stats_by_tag(start, end)
+                total_seconds = sum(s['total_seconds'] or 0 for s in tag_stats if s['tag_name'] != '자리비움')
+                self.total_time_label.setText(f"총 활동 시간: {format_duration(total_seconds)}")
 
         except Exception as e:
             print(f"[TimelineTab] 타임라인 로드 오류: {e}")
 
-    def populate_table(self, activities):
+    def populate_table(self, activities, *, update_bar: bool = True):
         """테이블에 활동 데이터 채우기"""
         # 타임라인 바 업데이트
-        self.timeline_bar.set_activities(activities)
+        if update_bar:
+            self.timeline_bar.set_activities(activities)
+
+        display_activities = activities[:self.MAX_TABLE_ROWS]
+        if len(activities) > len(display_activities):
+            self.table_limit_label.setText(
+                f"※ 최신 {len(display_activities):,}개만 표시 중 (총 {len(activities):,}개)"
+            )
+        else:
+            self.table_limit_label.setText("")
 
         # 테이블 업데이트
-        self.table.setRowCount(len(activities))
+        self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        try:
+            self.table.setRowCount(len(display_activities))
 
-        for row, activity in enumerate(activities):
-            # 시작 시간
-            start_time = datetime.fromisoformat(activity['start_time'])
-            self.table.setItem(row, 0, QTableWidgetItem(start_time.strftime("%H:%M:%S")))
+            for row, activity in enumerate(display_activities):
+                # 시작 시간
+                start_time = datetime.fromisoformat(activity['start_time'])
+                self.table.setItem(row, 0, QTableWidgetItem(start_time.strftime("%H:%M:%S")))
 
-            # 종료 시간
-            if activity['end_time']:
-                end_time = datetime.fromisoformat(activity['end_time'])
-                self.table.setItem(row, 1, QTableWidgetItem(end_time.strftime("%H:%M:%S")))
-            else:
-                self.table.setItem(row, 1, QTableWidgetItem("진행 중"))
+                # 종료 시간
+                if activity['end_time']:
+                    end_time = datetime.fromisoformat(activity['end_time'])
+                    self.table.setItem(row, 1, QTableWidgetItem(end_time.strftime("%H:%M:%S")))
+                else:
+                    end_time = None
+                    self.table.setItem(row, 1, QTableWidgetItem("진행 중"))
 
-            # 프로세스
-            process_name = activity['process_name'] or "N/A"
-            self.table.setItem(row, 2, QTableWidgetItem(process_name))
+                # 프로세스
+                process_name = activity['process_name'] or "N/A"
+                self.table.setItem(row, 2, QTableWidgetItem(process_name))
 
-            # 제목/URL (Chrome URL이 있으면 표시, 아니면 window_title)
-            if activity['chrome_url']:
-                title = activity['chrome_url']
-            else:
-                title = activity['window_title'] or "N/A"
+                # 제목/URL (Chrome URL이 있으면 표시, 아니면 window_title)
+                if activity['chrome_url']:
+                    title = activity['chrome_url']
+                else:
+                    title = activity['window_title'] or "N/A"
 
-            # 제목이 너무 길면 자르기
-            if len(title) > 100:
-                title = title[:97] + "..."
+                # 제목이 너무 길면 자르기
+                if len(title) > 100:
+                    title = title[:97] + "..."
 
-            self.table.setItem(row, 3, QTableWidgetItem(title))
+                self.table.setItem(row, 3, QTableWidgetItem(title))
 
-            # 태그
-            tag_name = activity.get('tag_name', '미분류')
-            tag_item = QTableWidgetItem(tag_name)
+                # 태그
+                tag_name = activity.get('tag_name', '미분류')
+                tag_item = QTableWidgetItem(tag_name)
 
-            # 태그 색상 적용
-            if activity.get('tag_color'):
-                from PyQt6.QtGui import QColor, QBrush
-                color = QColor(activity['tag_color'])
-                # 배경색으로 적용 (연한 색상)
-                color.setAlpha(80)  # 투명도 설정
-                tag_item.setBackground(QBrush(color))
-            self.table.setItem(row, 4, tag_item)
+                # 태그 색상 적용
+                if activity.get('tag_color'):
+                    from PyQt6.QtGui import QColor, QBrush
+                    color = QColor(activity['tag_color'])
+                    # 배경색으로 적용 (연한 색상)
+                    color.setAlpha(80)  # 투명도 설정
+                    tag_item.setBackground(QBrush(color))
+                self.table.setItem(row, 4, tag_item)
 
-            # 시간
-            if activity['end_time']:
-                duration = end_time - start_time
-                seconds = duration.total_seconds()
-                minutes = int(seconds // 60)
-                seconds = int(seconds % 60)
-                time_str = f"{minutes}분 {seconds}초"
-            else:
-                time_str = "-"
+                # 시간
+                if end_time is not None:
+                    duration = end_time - start_time
+                    seconds = duration.total_seconds()
+                    minutes = int(seconds // 60)
+                    seconds = int(seconds % 60)
+                    time_str = f"{minutes}분 {seconds}초"
+                else:
+                    time_str = "-"
 
-            self.table.setItem(row, 5, QTableWidgetItem(time_str))
+                self.table.setItem(row, 5, QTableWidgetItem(time_str))
+        finally:
+            self.table.blockSignals(False)
+            self.table.setUpdatesEnabled(True)
 
         # 통계 표시 (총 활동 수)
-        print(f"[TimelineTab] {len(activities)}개 활동 로드됨")
+        print(f"[TimelineTab] {len(display_activities)}개 활동 표시됨 (총 {len(activities)}개 조회됨)")
+
+    def _schedule_realtime_refresh(self):
+        if self._realtime_refresh_scheduled:
+            return
+        self._realtime_refresh_scheduled = True
+        QTimer.singleShot(self.REALTIME_REFRESH_DEBOUNCE_MS, self._run_realtime_refresh)
+
+    def _run_realtime_refresh(self):
+        self._realtime_refresh_scheduled = False
+        if not self.isVisible():
+            return
+        if self.selected_date == datetime.now().date():
+            self.load_timeline(realtime=True)
+
+    def _connect_monitor(self):
+        if self.monitor_engine and not self._monitor_connected:
+            self.monitor_engine.activity_detected.connect(self.on_new_activity)
+            self._monitor_connected = True
+
+    def _disconnect_monitor(self):
+        if self.monitor_engine and self._monitor_connected:
+            try:
+                self.monitor_engine.activity_detected.disconnect(self.on_new_activity)
+            except Exception:
+                pass
+            self._monitor_connected = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._connect_monitor()
+        self.reload_tag_filter()
+        if not self._has_loaded_once:
+            self._has_loaded_once = True
+            QTimer.singleShot(0, self.load_timeline)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._disconnect_monitor()
 
     @pyqtSlot(dict)
     def on_new_activity(self, activity_info):
@@ -340,6 +431,7 @@ class TimelineTab(QWidget):
         Args:
             activity_info: 활동 정보 딕셔너리
         """
-        # 현재 날짜가 오늘이면 자동 갱신
-        if self.selected_date == datetime.now().date():
-            self.load_timeline()
+        if not self.isVisible():
+            return
+        # 현재 날짜가 오늘이면 자동 갱신 (전체 리로드는 무거워서 디바운스 + 라이트 갱신)
+        self._schedule_realtime_refresh()

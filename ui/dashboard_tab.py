@@ -97,10 +97,20 @@ class DailyStatsWidget(QWidget):
         # 초기 데이터 로드
         self.refresh_stats()
 
-        # 10초마다 자동 갱신
-        self.timer = QTimer()
+        # 10초마다 자동 갱신 (탭이 보일 때만 실행)
+        self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_stats)
-        self.timer.start(10000)
+        self.timer.setInterval(10000)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.timer.isActive():
+            self.timer.start()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if self.timer.isActive():
+            self.timer.stop()
 
     def create_date_selector(self):
         """날짜 선택 위젯"""
@@ -187,7 +197,7 @@ class DailyStatsWidget(QWidget):
             print(f"[DashboardTab] 통계 갱신 오류: {e}")
 
     def update_stat_cards(self, stats):
-        """태그별 통계 카드 업데이트 (3열 그리드)"""
+        """태그별 통계 카드 업데이트 (동적 열 수: 9개 이상이면 4열, 아니면 3열)"""
         # 기존 카드 제거
         while self.stats_layout.count():
             child = self.stats_layout.takeAt(0)
@@ -197,7 +207,10 @@ class DailyStatsWidget(QWidget):
         # 총 시간 계산 (자리비움 제외)
         total_seconds = sum(s['total_seconds'] or 0 for s in stats if s['tag_name'] != '자리비움')
 
-        # 카드 생성 (3열 그리드)
+        # 열 수 결정: 태그 9개 이상이면 4열, 아니면 3열
+        num_cols = 4 if len(stats) >= 9 else 3
+
+        # 카드 생성
         row = 0
         col = 0
         for stat in stats:
@@ -213,9 +226,9 @@ class DailyStatsWidget(QWidget):
             )
             self.stats_layout.addWidget(card, row, col)
 
-            # 다음 위치 계산 (3열)
+            # 다음 위치 계산
             col += 1
-            if col >= 3:
+            if col >= num_cols:
                 col = 0
                 row += 1
 

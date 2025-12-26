@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
   import { toast } from '../lib/stores/toast.js';
+  import ConfirmModal from '../lib/components/ConfirmModal.svelte';
 
   let loading = true;
   let error = null;
@@ -34,6 +35,11 @@
   let showRulesImportModal = false;
   let rulesImportFile = null;
   let rulesImportMergeMode = true;
+
+  // Exit app
+  let showExitModal = false;
+  let exitInProgress = false;
+  let activeBlocks = [];
 
   async function loadData() {
     loading = true;
@@ -183,6 +189,35 @@
   function cancelRulesImport() {
     showRulesImportModal = false;
     rulesImportFile = null;
+  }
+
+  // === App Exit ===
+  async function handleExitClick() {
+    try {
+      const status = await api.getFocusStatus();
+      activeBlocks = status.activeBlocks || [];
+      showExitModal = true;
+    } catch (err) {
+      // 상태 체크 실패해도 종료 모달은 표시
+      activeBlocks = [];
+      showExitModal = true;
+    }
+  }
+
+  async function confirmExit() {
+    exitInProgress = true;
+    try {
+      await api.exitApp();
+      toast.success('앱을 종료합니다...');
+    } catch (err) {
+      toast.error('종료 실패: ' + err.message);
+      exitInProgress = false;
+    }
+  }
+
+  function cancelExit() {
+    showExitModal = false;
+    activeBlocks = [];
   }
 
   onMount(loadData);
@@ -438,6 +473,22 @@
       </div>
     </div>
   </div>
+
+  <!-- App Exit -->
+  <div class="bg-bg-card rounded-xl border border-red-500/30 p-5">
+    <h2 class="text-lg font-semibold text-text-primary mb-4">앱 종료</h2>
+    <p class="text-sm text-text-muted mb-4">Activity Tracker를 완전히 종료합니다. 트레이 아이콘도 함께 종료됩니다.</p>
+    <button
+      on:click={handleExitClick}
+      disabled={exitInProgress}
+      class="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 rounded-lg border border-red-500/30 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+    >
+      <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+      </svg>
+      <span class="text-red-400 font-medium">{exitInProgress ? '종료 중...' : '앱 종료'}</span>
+    </button>
+  </div>
 </div>
 
 <!-- Rules Import Modal -->
@@ -509,3 +560,23 @@
     </div>
   </div>
 {/if}
+
+<!-- Exit Confirm Modal -->
+<ConfirmModal
+  show={showExitModal}
+  title="앱 종료"
+  type={activeBlocks.length > 0 ? 'danger' : 'warning'}
+  confirmText="종료"
+  on:confirm={confirmExit}
+  on:cancel={cancelExit}
+>
+  {#if activeBlocks.length > 0}
+    <p class="text-red-400 font-medium">현재 집중 모드가 활성화되어 있습니다!</p>
+    <p>차단 중인 태그: <strong class="text-red-400">{activeBlocks.map(b => b.name).join(', ')}</strong></p>
+    <p class="mt-2">앱을 종료하면 집중 모드가 해제되어 차단된 앱들을 다시 사용할 수 있게 됩니다.</p>
+    <p class="text-yellow-400">정말로 종료하시겠습니까?</p>
+  {:else}
+    <p>Activity Tracker를 종료합니다.</p>
+    <p class="text-text-muted">트레이 아이콘과 모든 모니터링이 중지됩니다.</p>
+  {/if}
+</ConfirmModal>

@@ -120,7 +120,11 @@ export const api = {
 
   // Focus
   getFocusSettings: () => request('/focus'),
+  getFocusStatus: () => request('/focus/status'),
   updateFocusSettings: (tagId, data) => request(`/focus/${tagId}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // System
+  exitApp: () => request('/system/exit', { method: 'POST' }),
 
   // Auto Start
   getAutoStart: () => request('/settings/autostart'),

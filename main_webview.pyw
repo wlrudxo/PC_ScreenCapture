@@ -12,6 +12,8 @@ import asyncio
 import webbrowser
 import socket
 import signal
+import ctypes
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -25,7 +27,7 @@ import pystray
 from PIL import Image
 import uvicorn
 
-from backend.api_server import app as fastapi_app, ws_manager, set_runtime_engines
+from backend.api_server import app as fastapi_app, ws_manager, set_runtime_engines, set_exit_callback
 from backend.database import DatabaseManager
 from backend.monitor_engine_thread import MonitorEngineThread
 from backend.rule_engine import RuleEngine
@@ -178,11 +180,77 @@ class ActivityTrackerApp:
         if self.window:
             self.window.hide()
 
-    def quit_app(self, icon=None, item=None):
-        """앱 종료"""
+    def _get_active_focus_blocks(self) -> list:
+        """현재 활성화된 집중 모드 차단 목록 조회"""
+        if not self.db_manager:
+            return []
+
+        try:
+            tags = self.db_manager.get_all_tags()
+            active_blocks = []
+
+            now = datetime.now()
+            current_minutes = now.hour * 60 + now.minute
+
+            for tag in tags:
+                if not tag.get('block_enabled'):
+                    continue
+                if tag['name'] in ('자리비움', '미분류'):
+                    continue
+
+                start_time = tag.get('block_start_time')
+                end_time = tag.get('block_end_time')
+
+                if not start_time or not end_time:
+                    continue
+
+                start_h, start_m = map(int, start_time.split(':'))
+                end_h, end_m = map(int, end_time.split(':'))
+                start_minutes = start_h * 60 + start_m
+                end_minutes = end_h * 60 + end_m
+
+                # 시간 범위 체크
+                if start_minutes <= end_minutes:
+                    is_active = start_minutes <= current_minutes < end_minutes
+                else:
+                    # 자정 넘는 경우 (22:00 ~ 02:00)
+                    is_active = current_minutes >= start_minutes or current_minutes < end_minutes
+
+                if is_active:
+                    active_blocks.append(tag['name'])
+
+            return active_blocks
+        except Exception as e:
+            print(f"[App] Error checking focus blocks: {e}")
+            return []
+
+    def _confirm_and_quit_from_tray(self, active_blocks: list):
+        """트레이에서 종료 시 별도 스레드에서 확인 후 종료"""
+        MB_YESNO = 0x04
+        MB_ICONWARNING = 0x30
+        MB_SYSTEMMODAL = 0x1000
+        MB_SETFOREGROUND = 0x10000
+        IDYES = 6
+
+        message = (
+            f"현재 집중 모드가 활성화되어 있습니다!\n\n"
+            f"차단 중인 태그: {', '.join(active_blocks)}\n\n"
+            f"앱을 종료하면 집중 모드가 해제됩니다.\n"
+            f"정말로 종료하시겠습니까?"
+        )
+
+        result = ctypes.windll.user32.MessageBoxW(
+            0, message, "Activity Tracker 종료",
+            MB_YESNO | MB_ICONWARNING | MB_SYSTEMMODAL | MB_SETFOREGROUND
+        )
+
+        if result == IDYES:
+            self._do_quit()
+
+    def _do_quit(self):
+        """실제 종료 수행"""
         self.running = False
 
-        # 모니터링 엔진 종료
         if self.monitor_engine and self.monitor_engine.is_alive():
             print("[App] Stopping monitor engine...")
             self.monitor_engine.stop(timeout=3.0)
@@ -195,6 +263,22 @@ class ActivityTrackerApp:
 
         print("[App] Shutting down...")
         os._exit(0)
+
+    def quit_app(self, icon=None, item=None):
+        """앱 종료"""
+        # 트레이에서 호출된 경우 집중 모드 체크
+        if icon is not None:
+            active_blocks = self._get_active_focus_blocks()
+            if active_blocks:
+                # 별도 스레드에서 확인창 띄우기 (트레이 메뉴가 먼저 닫히도록)
+                threading.Thread(
+                    target=self._confirm_and_quit_from_tray,
+                    args=(active_blocks,),
+                    daemon=True
+                ).start()
+                return  # 트레이 콜백 즉시 반환
+
+        self._do_quit()
 
     def on_closing(self):
         """창 닫기 이벤트 핸들러"""
@@ -214,6 +298,9 @@ class ActivityTrackerApp:
         # API 서버 시작
         self.start_api_server()
         time.sleep(1)  # 서버 시작 대기
+
+        # 종료 콜백 설정
+        set_exit_callback(self.quit_app)
 
         # 모니터링 엔진 시작
         self.start_monitor_engine()

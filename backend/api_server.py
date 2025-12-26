@@ -785,6 +785,36 @@ async def get_focus_settings():
     return {"focusSettings": focus_settings}
 
 
+@app.get("/api/focus/status")
+async def get_focus_status():
+    """현재 활성화된 집중 모드 상태 조회"""
+    db = get_db()
+    tags = db.get_all_tags()
+
+    active_blocks = []
+    for tag in tags:
+        if not tag.get('block_enabled'):
+            continue
+        if tag['name'] in ('자리비움', '미분류'):
+            continue
+
+        start_time = tag.get('block_start_time')
+        end_time = tag.get('block_end_time')
+
+        if _is_in_block_time(start_time, end_time):
+            active_blocks.append({
+                "id": tag['id'],
+                "name": tag['name'],
+                "start_time": start_time,
+                "end_time": end_time
+            })
+
+    return {
+        "hasActiveBlocks": len(active_blocks) > 0,
+        "activeBlocks": active_blocks
+    }
+
+
 def _is_in_block_time(start_time: str, end_time: str) -> bool:
     """현재 시간이 차단 시간대 내인지 확인 (자정 넘김 지원)"""
     if not start_time or not end_time:
@@ -800,11 +830,11 @@ def _is_in_block_time(start_time: str, end_time: str) -> bool:
         end_minutes = end_h * 60 + end_m
 
         if start_minutes <= end_minutes:
-            # 일반 케이스: 09:00 ~ 18:00
-            return start_minutes <= current_minutes <= end_minutes
+            # 일반 케이스: 09:00 ~ 18:00 (18:00 미만)
+            return start_minutes <= current_minutes < end_minutes
         else:
             # 자정 넘는 케이스: 22:00 ~ 02:00
-            return current_minutes >= start_minutes or current_minutes <= end_minutes
+            return current_minutes >= start_minutes or current_minutes < end_minutes
     except:
         return True  # 파싱 실패 시 차단 중으로 간주
 
@@ -1281,6 +1311,30 @@ async def broadcast_activity_update(activity: dict):
 async def health_check():
     """헬스 체크"""
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
+# === System ===
+
+# 종료 콜백 (main_webview.py에서 설정)
+_exit_callback = None
+
+
+def set_exit_callback(callback):
+    """종료 콜백 설정"""
+    global _exit_callback
+    _exit_callback = callback
+
+
+@app.post("/api/system/exit")
+async def system_exit():
+    """앱 종료"""
+    if _exit_callback:
+        # 비동기로 종료 (응답 후 종료되도록)
+        import asyncio
+        asyncio.get_event_loop().call_later(0.5, _exit_callback)
+        return {"message": "Shutting down..."}
+    else:
+        raise HTTPException(500, "Exit callback not configured")
 
 
 # === Static Files (Web UI) ===

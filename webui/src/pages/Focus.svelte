@@ -13,6 +13,7 @@
 
   import { onMount, onDestroy } from 'svelte';
   import { api } from '../lib/api/client.js';
+  import ConfirmModal from '../lib/components/ConfirmModal.svelte';
 
   let loading = true;
   let error = null;
@@ -148,8 +149,8 @@
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
     <div class="text-sm text-text-secondary">
-      <p>차단이 활성화된 시간대에는 설정을 변경할 수 없습니다.</p>
-      <p class="mt-1">시간대 미설정 시 항상 차단됩니다. 22:00~02:00 같은 자정 넘는 범위도 지원됩니다.</p>
+      <p>차단이 활성화된 시간대에는 토글을 끌 수 없습니다.</p>
+      <p class="mt-1">시간대를 변경하려면 먼저 토글을 꺼주세요. 22:00~02:00 같은 자정 넘는 범위도 지원됩니다.</p>
     </div>
   </div>
 
@@ -195,11 +196,11 @@
                 </label>
 
                 <!-- Time Range -->
-                <div class="flex items-center gap-2 {!modifiable ? 'opacity-50' : ''}">
+                <div class="flex items-center gap-2 {setting.block_enabled ? 'opacity-50' : ''}">
                   <input
                     type="time"
                     value={setting.block_start_time || '09:00'}
-                    disabled={!modifiable}
+                    disabled={setting.block_enabled}
                     on:change={(e) => updateFocusSetting(setting, 'block_start_time', e.target.value)}
                     class="px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none disabled:cursor-not-allowed"
                   />
@@ -207,7 +208,7 @@
                   <input
                     type="time"
                     value={setting.block_end_time || '18:00'}
-                    disabled={!modifiable}
+                    disabled={setting.block_enabled}
                     on:change={(e) => updateFocusSetting(setting, 'block_end_time', e.target.value)}
                     class="px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none disabled:cursor-not-allowed"
                   />
@@ -259,38 +260,15 @@
 </div>
 
 <!-- Warning Modal -->
-{#if showWarningModal}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-bg-card rounded-xl p-6 w-[450px] border border-border">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
-          <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-semibold text-text-primary">집중 모드 활성화 경고</h3>
-      </div>
-
-      <div class="text-sm text-text-secondary space-y-3 mb-6">
-        <p><strong class="text-yellow-400">"{pendingSetting?.name}"</strong> 태그의 집중 모드를 활성화하려고 합니다.</p>
-        <p class="text-yellow-400 font-medium">⚠️ 주의: 활성화 시간대({pendingSetting?.block_start_time || '09:00'} ~ {pendingSetting?.block_end_time || '18:00'}) 동안에는 차단을 해제할 수 없습니다.</p>
-        <p>이 기간 동안 해당 태그의 창은 자동으로 최소화되며, 설정 변경이 불가능합니다.</p>
-      </div>
-
-      <div class="flex gap-3 justify-end">
-        <button
-          on:click={cancelEnableFocus}
-          class="px-4 py-2 rounded-lg bg-bg-tertiary border border-border text-text-secondary hover:bg-bg-hover transition-colors"
-        >
-          취소
-        </button>
-        <button
-          on:click={confirmEnableFocus}
-          class="px-4 py-2 rounded-lg bg-yellow-500 text-black font-medium hover:bg-yellow-400 transition-colors"
-        >
-          활성화
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<ConfirmModal
+  show={showWarningModal}
+  title="집중 모드 활성화 경고"
+  type="warning"
+  confirmText="활성화"
+  on:confirm={confirmEnableFocus}
+  on:cancel={cancelEnableFocus}
+>
+  <p><strong class="text-yellow-400">"{pendingSetting?.name}"</strong> 태그의 집중 모드를 활성화하려고 합니다.</p>
+  <p class="text-yellow-400 font-medium">⚠️ 주의: 활성화 시간대({pendingSetting?.block_start_time || '09:00'} ~ {pendingSetting?.block_end_time || '18:00'}) 동안에는 차단을 해제할 수 없습니다.</p>
+  <p>이 기간 동안 해당 태그의 창은 자동으로 최소화되며, 설정 변경이 불가능합니다.</p>
+</ConfirmModal>

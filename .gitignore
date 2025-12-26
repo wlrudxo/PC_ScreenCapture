@@ -22,6 +22,8 @@ test_*.db
 
 # Python
 __pycache__/
+venv*/
+.venv/
 *.pyc
 *.pyo
 *.pyd
@@ -45,6 +47,5 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-nul
 sounds/
 *.lnk

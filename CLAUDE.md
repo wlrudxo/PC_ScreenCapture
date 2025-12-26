@@ -9,22 +9,49 @@ PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 �
 - Chrome URL 추적 (WebSocket 기반 확장 프로그램)
 - 화면 잠금/idle 상태 감지
 - 우선순위 기반 자동 태그 분류
-- 대시보드/타임라인 UI (PyQt6)
-- 시스템 트레이 백그라운드 실행
+- Web 기반 대시보드/타임라인 UI
+- 시스템 트레이 백그라운드 실행 (pystray)
 - 태그별 알림 (토스트, 사운드, 이미지)
 - 집중 모드 (태그별 창 최소화, 시간대 설정)
 - 활동 로그 자동 생성 (daily/monthly/recent.log)
+- 실시간 업데이트 (WebSocket)
 
 **기술 스택:**
-- Backend: Python, SQLite (WAL), ctypes, psutil, websockets
-- Frontend: PyQt6, matplotlib
+- Backend: Python, FastAPI, SQLite (WAL), ctypes, psutil
+- Frontend: Svelte, Vite, TailwindCSS, Chart.js
+- Desktop: PyWebView, pystray
 - Chrome Extension: Manifest V3
 
 ---
 
 ## 아키텍처
 
-**상세한 시스템 구조, 모듈 설명, 데이터 흐름은 `ARCHITECTURE.md` 참고**
+```
++--------------------------------------------------+
+|              PyWebView (Desktop Window)          |
+|  +--------------------------------------------+  |
+|  |           Svelte Web UI (SPA)              |  |
+|  |  Dashboard | Timeline | Tags | Focus | ... |  |
+|  +--------------------------------------------+  |
++------------------------+-------------------------+
+                         | REST API + WebSocket
++------------------------v-------------------------+
+|              FastAPI Server (:8000)              |
+|  +--------------------------------------------+  |
+|  | MonitorEngineThread (threading.Thread)     |  |
+|  |  +-- WindowTracker, ScreenDetector         |  |
+|  |  +-- ChromeURLReceiver                     |  |
+|  |  +-- NotificationManager, FocusBlocker     |  |
+|  +--------------------------------------------+  |
+|  | RuleEngine | DatabaseManager | LogGenerator|  |
++------------------------+-------------------------+
+                         |
++------------------------v-------------------------+
+|              SQLite Database (WAL)               |
++--------------------------------------------------+
+```
+
+**상세한 데이터 스키마, API 명세는 `ARCHITECTURE.md` 참고**
 
 ---
 
@@ -32,11 +59,27 @@ PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 �
 
 | 모듈 | 설명 |
 |------|------|
-| `backend/monitor_engine.py` | 메인 모니터링 스레드 (2초 폴링) |
+| `main_webview.py` | 앱 진입점 (PyWebView + pystray + FastAPI) |
+| `backend/api_server.py` | FastAPI REST/WebSocket 서버 |
+| `backend/monitor_engine_thread.py` | 메인 모니터링 스레드 (threading 기반) |
 | `backend/focus_blocker.py` | 집중 모드 - 태그별 창 최소화 |
 | `backend/notification_manager.py` | 토스트/사운드/이미지 알림 |
 | `backend/log_generator.py` | 활동 로그 생성 |
-| `ui/focus_tab.py` | 집중 모드 설정 UI |
+| `webui/src/pages/*.svelte` | 각 페이지 UI 컴포넌트 |
+
+---
+
+## WebUI 페이지
+
+| 페이지 | 설명 |
+|--------|------|
+| `Dashboard.svelte` | 오늘/기간 통계, 파이/바 차트 |
+| `Timeline.svelte` | 활동 목록 + 타임라인 바 시각화 |
+| `Analysis.svelte` | 기간별 분석 (목표 대비 달성률) |
+| `TagManagement.svelte` | 태그/룰 CRUD, 재분류, 삭제 |
+| `Notification.svelte` | 알림 설정 (토스트/사운드/이미지) |
+| `Focus.svelte` | 집중 모드 설정 (시간대별 차단) |
+| `Settings.svelte` | 일반 설정, 데이터 백업/복원 |
 
 ---
 

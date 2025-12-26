@@ -1,6 +1,14 @@
-PyQt6>=6.6.0
-pywin32>=306
-websockets>=12.0
-matplotlib>=3.8.0
-winotify>=1.1.0
-imageio-ffmpeg>=0.5.0
+# Web UI & Desktop
+pywebview>=6.1
+pystray>=0.19.5
+pillow>=12.0.0
+
+# Backend Server
+fastapi>=0.127.0
+uvicorn>=0.40.0
+python-multipart>=0.0.21
+
+# Utilities
+websockets>=15.0.1
+psutil>=7.2.0
+windows-toasts>=1.3.1

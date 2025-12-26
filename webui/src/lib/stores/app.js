@@ -42,18 +42,19 @@ export const formattedDate = derived(selectedDate, ($date) => {
 
 // Helper to format duration (hours and minutes only)
 export function formatDuration(seconds) {
-  if (!seconds || seconds < 0) return '0분';
+  if (!seconds || seconds < 0) return '0초';
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
 
   if (hours > 0) {
-    return `${hours}시간 ${minutes}분`;
+    return minutes > 0 ? `${hours}시간 ${minutes}분` : `${hours}시간`;
   }
   if (minutes > 0) {
-    return `${minutes}분`;
+    return secs > 0 ? `${minutes}분 ${secs}초` : `${minutes}분`;
   }
-  return '1분 미만';
+  return `${secs}초`;
 }
 
 // Helper to format time (24h with seconds)

@@ -19,6 +19,8 @@
   let focusSettings = [];
   let currentTime = new Date();
   let timeInterval;
+  let showWarningModal = false;
+  let pendingSetting = null;
 
   async function loadData() {
     loading = true;
@@ -64,6 +66,36 @@
 
   function canModify(setting) {
     return !isBlockActive(setting);
+  }
+
+  function handleEnableToggle(setting, newValue) {
+    if (!canModify(setting)) {
+      alert('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
+      return;
+    }
+
+    // 활성화하려는 경우 경고창 표시
+    if (newValue === true) {
+      pendingSetting = setting;
+      showWarningModal = true;
+    } else {
+      // 비활성화는 바로 처리
+      updateFocusSetting(setting, 'block_enabled', false);
+    }
+  }
+
+  async function confirmEnableFocus() {
+    if (pendingSetting) {
+      await updateFocusSetting(pendingSetting, 'block_enabled', true);
+    }
+    showWarningModal = false;
+    pendingSetting = null;
+  }
+
+  function cancelEnableFocus() {
+    showWarningModal = false;
+    pendingSetting = null;
+    loadData(); // 체크박스 상태 원복
   }
 
   async function updateFocusSetting(setting, field, value) {
@@ -156,7 +188,7 @@
                     type="checkbox"
                     checked={setting.block_enabled}
                     disabled={!modifiable}
-                    on:change={(e) => updateFocusSetting(setting, 'block_enabled', e.target.checked)}
+                    on:change={(e) => handleEnableToggle(setting, e.target.checked)}
                     class="sr-only peer"
                   >
                   <div class="w-11 h-6 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
@@ -225,3 +257,40 @@
     </div>
   </div>
 </div>
+
+<!-- Warning Modal -->
+{#if showWarningModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-bg-card rounded-xl p-6 w-[450px] border border-border">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+          <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-text-primary">집중 모드 활성화 경고</h3>
+      </div>
+
+      <div class="text-sm text-text-secondary space-y-3 mb-6">
+        <p><strong class="text-yellow-400">"{pendingSetting?.name}"</strong> 태그의 집중 모드를 활성화하려고 합니다.</p>
+        <p class="text-yellow-400 font-medium">⚠️ 주의: 활성화 시간대({pendingSetting?.block_start_time || '09:00'} ~ {pendingSetting?.block_end_time || '18:00'}) 동안에는 차단을 해제할 수 없습니다.</p>
+        <p>이 기간 동안 해당 태그의 창은 자동으로 최소화되며, 설정 변경이 불가능합니다.</p>
+      </div>
+
+      <div class="flex gap-3 justify-end">
+        <button
+          on:click={cancelEnableFocus}
+          class="px-4 py-2 rounded-lg bg-bg-tertiary border border-border text-text-secondary hover:bg-bg-hover transition-colors"
+        >
+          취소
+        </button>
+        <button
+          on:click={confirmEnableFocus}
+          class="px-4 py-2 rounded-lg bg-yellow-500 text-black font-medium hover:bg-yellow-400 transition-colors"
+        >
+          활성화
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}

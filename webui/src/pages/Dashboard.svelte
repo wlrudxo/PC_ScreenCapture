@@ -119,7 +119,7 @@
     if (barChart && hourlyStats.length > 0) {
       // 태그별로 데이터셋 그룹화
       const tagMap = new Map();
-      for (const hourData of hourlyStats) {
+      hourlyStats.forEach((hourData, hourIndex) => {
         for (const tag of hourData.tags) {
           if (!tagMap.has(tag.tag_id)) {
             tagMap.set(tag.tag_id, {
@@ -129,10 +129,9 @@
               borderRadius: 4
             });
           }
-          const hourIndex = hourlyStats.indexOf(hourData);
           tagMap.get(tag.tag_id).data[hourIndex] = tag.minutes;
         }
-      }
+      });
 
       barChart.data.labels = hourlyStats.map(h => `${h.hour}시`);
       barChart.data.datasets = Array.from(tagMap.values());
@@ -169,7 +168,7 @@
     // Bar Chart (시간대별)
     const barCtx = document.getElementById('hourlyBarChart');
     if (barCtx && !barChart) {
-      const hours = Array.from({ length: 15 }, (_, i) => i + 7); // 7시~21시
+      const hours = Array.from({ length: 24 }, (_, i) => i); // 0시~23시
       barChart = new Chart(barCtx, {
         type: 'bar',
         data: {

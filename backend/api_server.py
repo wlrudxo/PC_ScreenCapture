@@ -196,21 +196,21 @@ async def get_dashboard_daily(date: str = Query(..., description="YYYY-MM-DD for
     # 태그 통계에서 자리비움 제외
     tag_stats = [s for s in tag_stats if s.get('tag_name') != '자리비움']
 
-    # 첫/마지막 활동 시간
+    # 첫/마지막 활동 시간 + 태그 전환 횟수 계산
     first_activity = None
     last_activity = None
+    tag_switches = 0
+    prev_tag = None
+
     if activities:
         sorted_activities = sorted(activities, key=lambda x: x['start_time'])
         first_activity = sorted_activities[0]['start_time']
         last_activity = sorted_activities[-1]['start_time']
 
-    # 태그 전환 횟수 계산
-    tag_switches = 0
-    prev_tag = None
-    for act in sorted(activities, key=lambda x: x['start_time']):
-        if prev_tag is not None and act.get('tag_id') != prev_tag:
-            tag_switches += 1
-        prev_tag = act.get('tag_id')
+        for act in sorted_activities:
+            if prev_tag is not None and act.get('tag_id') != prev_tag:
+                tag_switches += 1
+            prev_tag = act.get('tag_id')
 
     return {
         "date": date,
@@ -250,15 +250,16 @@ async def get_dashboard_period(
     activities = db.get_activities(start_date, end_date)
     all_tags = {t['id']: t for t in db.get_all_tags()}
 
-    # === dailyTrend: 날짜별 태그별 사용 시간 ===
+    # === dailyTrend + websiteStats: 한 번의 순회로 계산 ===
     daily_data = defaultdict(lambda: defaultdict(float))
+    domain_stats = defaultdict(float)
 
     for act in activities:
         act_start = act.get('start_time')
         act_end = act.get('end_time')
         tag_id = act.get('tag_id')
 
-        if not act_start or not tag_id:
+        if not act_start:
             continue
 
         if isinstance(act_start, str):
@@ -268,10 +269,23 @@ async def get_dashboard_period(
         elif act_end is None:
             act_end = datetime.now()
 
-        # 날짜 키
-        date_key = act_start.strftime("%Y-%m-%d")
         duration = (act_end - act_start).total_seconds()
-        daily_data[date_key][tag_id] += duration
+        date_key = act_start.strftime("%Y-%m-%d")
+
+        # dailyTrend 집계
+        if tag_id:
+            daily_data[date_key][tag_id] += duration
+
+        # websiteStats 집계
+        chrome_url = act.get('chrome_url')
+        if chrome_url:
+            try:
+                parsed = urlparse(chrome_url)
+                domain = parsed.netloc or parsed.path.split('/')[0]
+                if domain:
+                    domain_stats[domain] += duration
+            except Exception:
+                pass
 
     # dailyTrend 형식으로 변환
     daily_trend = []
@@ -295,35 +309,7 @@ async def get_dashboard_period(
         })
         current += timedelta(days=1)
 
-    # === websiteStats: 도메인별 체류 시간 ===
-    domain_stats = defaultdict(float)
-
-    for act in activities:
-        chrome_url = act.get('chrome_url')
-        if not chrome_url:
-            continue
-
-        act_start = act.get('start_time')
-        act_end = act.get('end_time')
-
-        if isinstance(act_start, str):
-            act_start = datetime.fromisoformat(act_start)
-        if isinstance(act_end, str):
-            act_end = datetime.fromisoformat(act_end) if act_end else datetime.now()
-        elif act_end is None:
-            act_end = datetime.now()
-
-        duration = (act_end - act_start).total_seconds()
-
-        # 도메인 추출
-        try:
-            parsed = urlparse(chrome_url)
-            domain = parsed.netloc or parsed.path.split('/')[0]
-            if domain:
-                domain_stats[domain] += duration
-        except Exception:
-            pass
-
+    # websiteStats 형식으로 변환
     website_stats = [
         {"domain": domain, "total_seconds": round(seconds)}
         for domain, seconds in sorted(domain_stats.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -381,7 +367,7 @@ async def get_dashboard_period(
 
 @app.get("/api/dashboard/hourly")
 async def get_dashboard_hourly(date: str = Query(..., description="YYYY-MM-DD format")):
-    """시간대별 태그 통계 (7시~21시)"""
+    """시간대별 태그 통계 (0시~23시)"""
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
@@ -389,8 +375,8 @@ async def get_dashboard_hourly(date: str = Query(..., description="YYYY-MM-DD fo
 
     db = get_db()
 
-    # 7시~21시 (15개 시간대)
-    hours = list(range(7, 22))
+    # 0시~23시 (24개 시간대)
+    hours = list(range(0, 24))
     hourly_data = {h: {} for h in hours}
 
     # 해당 날짜의 모든 활동 가져오기

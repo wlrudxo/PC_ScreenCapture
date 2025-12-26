@@ -137,7 +137,7 @@
   });
 </script>
 
-<div class="p-6 space-y-6">
+<div class="p-6 h-full flex flex-col gap-6">
   <!-- Header -->
   <div class="flex items-center justify-between">
     <div>
@@ -230,8 +230,8 @@
   </div>
 
   <!-- Activity Table -->
-  <div class="bg-bg-card rounded-xl border border-border overflow-hidden">
-    <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+  <div class="bg-bg-card rounded-xl border border-border overflow-hidden flex-1 flex flex-col min-h-0">
+    <div class="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
       <h2 class="text-lg font-semibold text-text-primary">활동 기록</h2>
       <span class="text-sm text-text-muted">{activities.length}개</span>
     </div>
@@ -241,7 +241,7 @@
     {:else if activities.length === 0}
       <div class="p-8 text-center text-text-muted">활동 기록이 없습니다</div>
     {:else}
-      <div class="overflow-x-auto max-h-96">
+      <div class="overflow-auto flex-1">
         <table class="w-full table-fixed">
           <thead class="bg-bg-secondary sticky top-0">
             <tr>

@@ -11,6 +11,7 @@ import time
 import asyncio
 import webbrowser
 import socket
+import signal
 from pathlib import Path
 
 try:
@@ -263,6 +264,15 @@ def main():
         print("[Mode] Development mode enabled")
 
     app = ActivityTrackerApp()
+
+    # Ctrl+C 핸들러
+    def signal_handler(signum, frame):
+        print("\n[App] Ctrl+C received, shutting down...")
+        app.quit_app()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     app.run()
 
 

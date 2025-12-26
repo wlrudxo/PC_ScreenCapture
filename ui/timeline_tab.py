@@ -57,9 +57,10 @@ class TimelineBarWidget(QWidget):
             tag_name = activity.get('tag_name', '미분류')
             tag_color = activity.get('tag_color', '#CCCCCC')
 
-            # 같은 태그면 병합, 아니면 새 세그먼트
-            if current_segment and current_segment['tag_name'] == tag_name:
-                # 연속된 활동이면 end_seconds만 업데이트
+            # 같은 태그 + 시간 갭 10초 이내면 병합
+            if (current_segment and
+                current_segment['tag_name'] == tag_name and
+                start_seconds - current_segment['end_seconds'] < 10):
                 current_segment['end_seconds'] = end_seconds
             else:
                 # 새 세그먼트 시작

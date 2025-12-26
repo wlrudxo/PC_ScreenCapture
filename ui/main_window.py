@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
         from ui.timeline_tab import TimelineTab
         from ui.tag_management_tab import TagManagementTab
         from ui.notification_tab import NotificationTab
+        from ui.focus_tab import FocusTab
         from ui.settings_tab import SettingsTab
 
         self.tabs = QTabWidget()
@@ -99,6 +100,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(TimelineTab(self.db_manager, self.monitor_engine), "⏱️ 타임라인")
         self.tabs.addTab(TagManagementTab(self.db_manager, self.rule_engine), "🏷️ 태그 관리")
         self.tabs.addTab(NotificationTab(self.db_manager), "🔔 알림")
+        self.tabs.addTab(FocusTab(self.db_manager, self.monitor_engine.focus_blocker), "🚫 집중")
         self.tabs.addTab(SettingsTab(self.db_manager, self.rule_engine, self.monitor_engine), "⚙️ 설정")
 
         self.setCentralWidget(self.tabs)

@@ -9,6 +9,7 @@ from backend.window_tracker import WindowTracker
 from backend.screen_detector import ScreenDetector
 from backend.chrome_receiver import ChromeURLReceiver
 from backend.notification_manager import NotificationManager
+from backend.focus_blocker import FocusBlocker
 
 
 class MonitorEngine(QThread):
@@ -50,6 +51,7 @@ class MonitorEngine(QThread):
             get_toast_enabled=self._get_toast_enabled,
             get_image_settings=self._get_image_settings
         )
+        self.focus_blocker = FocusBlocker(db_manager)
 
         # 상태 변수
         self.current_activity_id: Optional[int] = None
@@ -80,6 +82,8 @@ class MonitorEngine(QThread):
                 elif self.current_tag_id is not None:
                     # 동일 활동이어도 알림 체크 (쿨다운이 중복 알림 방지)
                     self._check_tag_alert(self.current_tag_id)
+                    # 차단 체크 (사용자가 최소화된 창을 다시 열었을 경우)
+                    self.focus_blocker.check_and_block(self.current_tag_id)
 
                 time.sleep(2)
 
@@ -235,6 +239,9 @@ class MonitorEngine(QThread):
 
             # 태그 알림 체크
             self._check_tag_alert(tag_id)
+
+            # 태그 차단 체크 (딴짓 태그면 창 최소화)
+            self.focus_blocker.check_and_block(tag_id)
 
         except Exception as e:
             print(f"[MonitorEngine] 활동 저장 오류: {e}")

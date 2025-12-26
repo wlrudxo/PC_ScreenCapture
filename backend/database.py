@@ -142,6 +142,13 @@ class DatabaseManager:
         except Exception:
             pass
 
+        # 태그 차단(집중 모드) 컬럼 추가 (마이그레이션)
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN block_enabled BOOLEAN DEFAULT 0")
+            self.conn.commit()
+        except Exception:
+            pass
+
         # settings 테이블 (전역 설정)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (

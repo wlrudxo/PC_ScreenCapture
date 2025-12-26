@@ -36,6 +36,10 @@
   let rulesImportFile = null;
   let rulesImportMergeMode = true;
 
+  // DB Restore modal
+  let showDbRestoreModal = false;
+  let dbRestoreFile = null;
+
   // Exit app
   let showExitModal = false;
   let exitInProgress = false;
@@ -110,25 +114,34 @@
     dbRestoreInput.click();
   }
 
-  async function handleDbRestore(event) {
+  function handleDbRestoreSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    if (!confirm('경고: 현재 데이터베이스가 백업 파일로 교체됩니다.\n이 작업은 되돌릴 수 없습니다.\n\n계속하시겠습니까?')) {
-      event.target.value = '';
-      return;
-    }
+    dbRestoreFile = file;
+    showDbRestoreModal = true;
+    event.target.value = '';
+  }
 
+  async function confirmDbRestore() {
+    if (!dbRestoreFile) return;
+
+    showDbRestoreModal = false;
     restoreInProgress = true;
     try {
-      const res = await api.restoreDatabase(file);
+      const res = await api.restoreDatabase(dbRestoreFile);
       toast.success(res.message + ' - 앱을 재시작해주세요.', 5000);
     } catch (err) {
       toast.error('복원 실패: ' + err.message);
     } finally {
       restoreInProgress = false;
-      event.target.value = '';
+      dbRestoreFile = null;
     }
+  }
+
+  function cancelDbRestore() {
+    showDbRestoreModal = false;
+    dbRestoreFile = null;
   }
 
   // === Rules Export/Import ===
@@ -228,7 +241,7 @@
   type="file"
   accept=".db"
   bind:this={dbRestoreInput}
-  on:change={handleDbRestore}
+  on:change={handleDbRestoreSelect}
   class="hidden"
 />
 <input
@@ -560,6 +573,20 @@
     </div>
   </div>
 {/if}
+
+<!-- DB Restore Confirm Modal -->
+<ConfirmModal
+  show={showDbRestoreModal}
+  title="데이터베이스 복원"
+  type="danger"
+  confirmText="복원"
+  on:confirm={confirmDbRestore}
+  on:cancel={cancelDbRestore}
+>
+  <p class="text-red-400 font-medium">경고: 현재 데이터베이스가 백업 파일로 교체됩니다.</p>
+  <p>파일: <strong class="text-text-primary">{dbRestoreFile?.name}</strong></p>
+  <p class="mt-2 text-yellow-400">이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?</p>
+</ConfirmModal>
 
 <!-- Exit Confirm Modal -->
 <ConfirmModal

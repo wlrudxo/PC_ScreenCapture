@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
+  import { toast } from '../lib/stores/toast.js';
+  import ConfirmModal from '../lib/components/ConfirmModal.svelte';
 
   let loading = true;
   let error = null;
@@ -13,6 +15,16 @@
   let showDeleteModal = false;
   let editingTag = null;
   let editingRule = null;
+
+  // Confirm modal states
+  let showDeleteTagModal = false;
+  let showDeleteRuleModal = false;
+  let showReclassifyUntaggedModal = false;
+  let showReclassifyAllModal = false;
+  let showDeleteActivitiesModal = false;
+  let pendingDeleteTag = null;
+  let pendingDeleteRule = null;
+  let pendingDeleteCount = 0;
 
   // Reclassify states
   let reclassifying = false;
@@ -75,20 +87,34 @@
       }
       showTagModal = false;
       await loadData();
+      toast.success('태그가 저장되었습니다.');
     } catch (err) {
-      alert('저장 실패: ' + err.message);
+      toast.error('저장 실패: ' + err.message);
     }
   }
 
-  async function deleteTag(tag) {
-    if (!confirm(`'${tag.name}' 태그를 삭제하시겠습니까?`)) return;
+  function deleteTag(tag) {
+    pendingDeleteTag = tag;
+    showDeleteTagModal = true;
+  }
+
+  async function confirmDeleteTag() {
+    showDeleteTagModal = false;
+    if (!pendingDeleteTag) return;
 
     try {
-      await api.deleteTag(tag.id);
+      await api.deleteTag(pendingDeleteTag.id);
       await loadData();
+      toast.success('태그가 삭제되었습니다.');
     } catch (err) {
-      alert('삭제 실패: ' + err.message);
+      toast.error('삭제 실패: ' + err.message);
     }
+    pendingDeleteTag = null;
+  }
+
+  function cancelDeleteTag() {
+    showDeleteTagModal = false;
+    pendingDeleteTag = null;
   }
 
   // Rule CRUD
@@ -138,20 +164,34 @@
       }
       showRuleModal = false;
       await loadData();
+      toast.success('규칙이 저장되었습니다.');
     } catch (err) {
-      alert('저장 실패: ' + err.message);
+      toast.error('저장 실패: ' + err.message);
     }
   }
 
-  async function deleteRule(rule) {
-    if (!confirm(`'${rule.name}' 규칙을 삭제하시겠습니까?`)) return;
+  function deleteRule(rule) {
+    pendingDeleteRule = rule;
+    showDeleteRuleModal = true;
+  }
+
+  async function confirmDeleteRule() {
+    showDeleteRuleModal = false;
+    if (!pendingDeleteRule) return;
 
     try {
-      await api.deleteRule(rule.id);
+      await api.deleteRule(pendingDeleteRule.id);
       await loadData();
+      toast.success('규칙이 삭제되었습니다.');
     } catch (err) {
-      alert('삭제 실패: ' + err.message);
+      toast.error('삭제 실패: ' + err.message);
     }
+    pendingDeleteRule = null;
+  }
+
+  function cancelDeleteRule() {
+    showDeleteRuleModal = false;
+    pendingDeleteRule = null;
   }
 
   async function toggleRule(rule) {
@@ -159,34 +199,40 @@
       await api.updateRule(rule.id, { enabled: !rule.enabled });
       await loadData();
     } catch (err) {
-      alert('변경 실패: ' + err.message);
+      toast.error('변경 실패: ' + err.message);
     }
   }
 
   // === Reclassify Functions ===
-  async function reclassifyUntagged() {
-    if (!confirm('미분류 항목을 현재 규칙에 따라 재분류하시겠습니까?')) return;
+  function reclassifyUntagged() {
+    showReclassifyUntaggedModal = true;
+  }
 
+  async function confirmReclassifyUntagged() {
+    showReclassifyUntaggedModal = false;
     reclassifying = true;
     try {
       const result = await api.reclassifyUntagged();
-      alert(`재분류 완료!\n\n- 재분류됨: ${result.reclassified}개\n- 여전히 미분류: ${result.remaining}개`);
+      toast.success(`재분류 완료! 재분류됨: ${result.reclassified}개, 여전히 미분류: ${result.remaining}개`);
     } catch (err) {
-      alert('재분류 실패: ' + err.message);
+      toast.error('재분류 실패: ' + err.message);
     } finally {
       reclassifying = false;
     }
   }
 
-  async function reclassifyAll() {
-    if (!confirm('⚠️ 정말 모든 활동을 재분류하시겠습니까?\n\n이 작업은 시간이 오래 걸릴 수 있습니다.')) return;
+  function reclassifyAll() {
+    showReclassifyAllModal = true;
+  }
 
+  async function confirmReclassifyAll() {
+    showReclassifyAllModal = false;
     reclassifying = true;
     try {
       const result = await api.reclassifyAll();
-      alert(`모든 활동 재분류 완료!\n\n- 총 재분류: ${result.reclassified}개`);
+      toast.success(`모든 활동 재분류 완료! 총 재분류: ${result.reclassified}개`);
     } catch (err) {
-      alert('재분류 실패: ' + err.message);
+      toast.error('재분류 실패: ' + err.message);
     } finally {
       reclassifying = false;
     }
@@ -199,13 +245,13 @@
       selectedGroups = new Set();
 
       if (unclassifiedGroups.length === 0) {
-        alert('삭제할 미분류 항목이 없습니다.');
+        toast.info('삭제할 미분류 항목이 없습니다.');
         return;
       }
 
       showDeleteModal = true;
     } catch (err) {
-      alert('미분류 목록 로드 실패: ' + err.message);
+      toast.error('미분류 목록 로드 실패: ' + err.message);
     }
   }
 
@@ -226,25 +272,34 @@
     selectedGroups = new Set();
   }
 
-  async function deleteSelectedActivities() {
+  function deleteSelectedActivities() {
     const idsToDelete = [];
     for (const idx of selectedGroups) {
       idsToDelete.push(...unclassifiedGroups[idx].ids);
     }
 
     if (idsToDelete.length === 0) {
-      alert('삭제할 항목을 선택하세요.');
+      toast.warning('삭제할 항목을 선택하세요.');
       return;
     }
 
-    if (!confirm(`${idsToDelete.length}개의 활동 기록을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+    pendingDeleteCount = idsToDelete.length;
+    showDeleteActivitiesModal = true;
+  }
+
+  async function confirmDeleteActivities() {
+    showDeleteActivitiesModal = false;
+    const idsToDelete = [];
+    for (const idx of selectedGroups) {
+      idsToDelete.push(...unclassifiedGroups[idx].ids);
+    }
 
     try {
       await api.deleteActivities(idsToDelete);
-      alert(`${idsToDelete.length}개의 활동 기록이 삭제되었습니다.`);
+      toast.success(`${idsToDelete.length}개의 활동 기록이 삭제되었습니다.`);
       showDeleteModal = false;
     } catch (err) {
-      alert('삭제 실패: ' + err.message);
+      toast.error('삭제 실패: ' + err.message);
     }
   }
 
@@ -680,3 +735,66 @@
     </div>
   </div>
 {/if}
+
+<!-- Delete Tag Confirm Modal -->
+<ConfirmModal
+  show={showDeleteTagModal}
+  title="태그 삭제"
+  type="danger"
+  confirmText="삭제"
+  on:confirm={confirmDeleteTag}
+  on:cancel={cancelDeleteTag}
+>
+  <p><strong class="text-text-primary">'{pendingDeleteTag?.name}'</strong> 태그를 삭제하시겠습니까?</p>
+  <p class="text-text-muted">이 태그에 연결된 규칙은 유지되지만 태그 연결이 해제됩니다.</p>
+</ConfirmModal>
+
+<!-- Delete Rule Confirm Modal -->
+<ConfirmModal
+  show={showDeleteRuleModal}
+  title="규칙 삭제"
+  type="danger"
+  confirmText="삭제"
+  on:confirm={confirmDeleteRule}
+  on:cancel={cancelDeleteRule}
+>
+  <p><strong class="text-text-primary">'{pendingDeleteRule?.name}'</strong> 규칙을 삭제하시겠습니까?</p>
+</ConfirmModal>
+
+<!-- Reclassify Untagged Confirm Modal -->
+<ConfirmModal
+  show={showReclassifyUntaggedModal}
+  title="미분류 재분류"
+  type="info"
+  confirmText="재분류"
+  on:confirm={confirmReclassifyUntagged}
+  on:cancel={() => showReclassifyUntaggedModal = false}
+>
+  <p>미분류 항목을 현재 규칙에 따라 재분류하시겠습니까?</p>
+</ConfirmModal>
+
+<!-- Reclassify All Confirm Modal -->
+<ConfirmModal
+  show={showReclassifyAllModal}
+  title="전체 재분류"
+  type="danger"
+  confirmText="재분류"
+  on:confirm={confirmReclassifyAll}
+  on:cancel={() => showReclassifyAllModal = false}
+>
+  <p class="text-yellow-400 font-medium">정말 모든 활동을 재분류하시겠습니까?</p>
+  <p class="text-text-muted">이 작업은 시간이 오래 걸릴 수 있습니다.</p>
+</ConfirmModal>
+
+<!-- Delete Activities Confirm Modal -->
+<ConfirmModal
+  show={showDeleteActivitiesModal}
+  title="활동 기록 삭제"
+  type="danger"
+  confirmText="삭제"
+  on:confirm={confirmDeleteActivities}
+  on:cancel={() => showDeleteActivitiesModal = false}
+>
+  <p><strong class="text-text-primary">{pendingDeleteCount}개</strong>의 활동 기록을 삭제하시겠습니까?</p>
+  <p class="text-yellow-400">이 작업은 되돌릴 수 없습니다.</p>
+</ConfirmModal>

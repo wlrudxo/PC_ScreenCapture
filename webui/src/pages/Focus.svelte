@@ -13,6 +13,7 @@
 
   import { onMount, onDestroy } from 'svelte';
   import { api } from '../lib/api/client.js';
+  import { toast } from '../lib/stores/toast.js';
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
 
   let loading = true;
@@ -71,7 +72,7 @@
 
   function handleEnableToggle(setting, newValue) {
     if (!canModify(setting)) {
-      alert('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
+      toast.error('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
       return;
     }
 
@@ -101,7 +102,7 @@
 
   async function updateFocusSetting(setting, field, value) {
     if (!canModify(setting)) {
-      alert('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
+      toast.error('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
       return;
     }
 
@@ -110,9 +111,9 @@
       await loadData();
     } catch (err) {
       if (err.message.includes('403')) {
-        alert('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
+        toast.error('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
       } else {
-        alert('변경 실패: ' + err.message);
+        toast.error('변경 실패: ' + err.message);
       }
       await loadData();
     }

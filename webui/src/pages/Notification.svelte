@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
+  import { toast } from '../lib/stores/toast.js';
+  import ConfirmModal from '../lib/components/ConfirmModal.svelte';
 
   let loading = true;
   let error = null;
@@ -24,6 +26,19 @@
   // File input refs
   let soundFileInput;
   let imageFileInput;
+
+  // Modal states
+  let showSoundNameModal = false;
+  let showImageNameModal = false;
+  let showDeleteSoundModal = false;
+  let showDeleteImageModal = false;
+
+  // Pending file/id for modal actions
+  let pendingSoundFile = null;
+  let pendingImageFile = null;
+  let pendingDeleteSoundId = null;
+  let pendingDeleteImageId = null;
+  let pendingSoundDefaultName = '';
 
   async function loadData() {
     loading = true;
@@ -62,7 +77,7 @@
       await api.updateAlertSettings({ [key]: value });
     } catch (err) {
       console.error('Failed to update setting:', err);
-      alert('설정 저장 실패: ' + err.message);
+      toast.error('설정 저장 실패: ' + err.message);
     }
   }
 
@@ -107,60 +122,117 @@
     imageFileInput.click();
   }
 
-  async function handleSoundFileSelect(event) {
+  function handleSoundFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    const name = prompt('사운드 이름을 입력하세요:', file.name.replace(/\.[^/.]+$/, ''));
-    if (!name) return;
-
-    try {
-      await api.uploadAlertSound(file, name);
-      await loadData();
-    } catch (err) {
-      alert('업로드 실패: ' + err.message);
-    }
-
+    pendingSoundFile = file;
+    pendingSoundDefaultName = file.name.replace(/\.[^/.]+$/, '');
+    showSoundNameModal = true;
     event.target.value = '';
   }
 
-  async function handleImageFileSelect(event) {
+  async function confirmSoundUpload(event) {
+    const name = event.detail?.value;
+    showSoundNameModal = false;
+    if (!name || !pendingSoundFile) {
+      pendingSoundFile = null;
+      return;
+    }
+
+    try {
+      await api.uploadAlertSound(pendingSoundFile, name);
+      await loadData();
+      toast.success('사운드가 추가되었습니다.');
+    } catch (err) {
+      toast.error('업로드 실패: ' + err.message);
+    }
+    pendingSoundFile = null;
+  }
+
+  function cancelSoundUpload() {
+    showSoundNameModal = false;
+    pendingSoundFile = null;
+  }
+
+  function handleImageFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    const name = prompt('이미지 이름을 입력하세요:', file.name.replace(/\.[^/.]+$/, ''));
-    if (!name) return;
-
-    try {
-      await api.uploadAlertImage(file, name);
-      await loadData();
-    } catch (err) {
-      alert('업로드 실패: ' + err.message);
-    }
-
+    pendingImageFile = file;
+    showImageNameModal = true;
     event.target.value = '';
   }
 
-  async function deleteSound(soundId) {
-    if (!confirm('이 사운드를 삭제하시겠습니까?')) return;
+  async function confirmImageUpload(event) {
+    const name = event.detail?.value;
+    showImageNameModal = false;
+    if (!name || !pendingImageFile) {
+      pendingImageFile = null;
+      return;
+    }
 
     try {
-      await api.deleteAlertSound(soundId);
+      await api.uploadAlertImage(pendingImageFile, name);
       await loadData();
+      toast.success('이미지가 추가되었습니다.');
     } catch (err) {
-      alert('삭제 실패: ' + err.message);
+      toast.error('업로드 실패: ' + err.message);
     }
+    pendingImageFile = null;
   }
 
-  async function deleteImage(imageId) {
-    if (!confirm('이 이미지를 삭제하시겠습니까?')) return;
+  function cancelImageUpload() {
+    showImageNameModal = false;
+    pendingImageFile = null;
+  }
+
+  function deleteSound(soundId) {
+    pendingDeleteSoundId = soundId;
+    showDeleteSoundModal = true;
+  }
+
+  async function confirmDeleteSound() {
+    showDeleteSoundModal = false;
+    if (!pendingDeleteSoundId) return;
 
     try {
-      await api.deleteAlertImage(imageId);
+      await api.deleteAlertSound(pendingDeleteSoundId);
       await loadData();
+      toast.success('사운드가 삭제되었습니다.');
     } catch (err) {
-      alert('삭제 실패: ' + err.message);
+      toast.error('삭제 실패: ' + err.message);
     }
+    pendingDeleteSoundId = null;
+  }
+
+  function cancelDeleteSound() {
+    showDeleteSoundModal = false;
+    pendingDeleteSoundId = null;
+  }
+
+  function deleteImage(imageId) {
+    pendingDeleteImageId = imageId;
+    showDeleteImageModal = true;
+  }
+
+  async function confirmDeleteImage() {
+    showDeleteImageModal = false;
+    if (!pendingDeleteImageId) return;
+
+    try {
+      await api.deleteAlertImage(pendingDeleteImageId);
+      await loadData();
+      toast.success('이미지가 삭제되었습니다.');
+    } catch (err) {
+      toast.error('삭제 실패: ' + err.message);
+    }
+    pendingDeleteImageId = null;
+  }
+
+  function cancelDeleteImage() {
+    showDeleteImageModal = false;
+    pendingDeleteImageId = null;
   }
 
   // Tag alert handlers
@@ -172,7 +244,7 @@
         t.id === tagId ? { ...t, [field]: value } : t
       );
     } catch (err) {
-      alert('설정 저장 실패: ' + err.message);
+      toast.error('설정 저장 실패: ' + err.message);
       await loadData();
     }
   }
@@ -410,3 +482,57 @@
     </div>
   {/if}
 </div>
+
+<!-- Sound Name Prompt Modal -->
+<ConfirmModal
+  show={showSoundNameModal}
+  title="사운드 이름 입력"
+  type="info"
+  mode="prompt"
+  placeholder="사운드 이름"
+  initialValue={pendingSoundDefaultName}
+  confirmText="추가"
+  on:confirm={confirmSoundUpload}
+  on:cancel={cancelSoundUpload}
+>
+  <p>업로드할 사운드의 이름을 입력하세요.</p>
+</ConfirmModal>
+
+<!-- Image Name Prompt Modal -->
+<ConfirmModal
+  show={showImageNameModal}
+  title="이미지 이름 입력"
+  type="info"
+  mode="prompt"
+  placeholder="이미지 이름"
+  initialValue={pendingImageFile?.name?.replace(/\.[^/.]+$/, '') || ''}
+  confirmText="추가"
+  on:confirm={confirmImageUpload}
+  on:cancel={cancelImageUpload}
+>
+  <p>업로드할 이미지의 이름을 입력하세요.</p>
+</ConfirmModal>
+
+<!-- Delete Sound Confirm Modal -->
+<ConfirmModal
+  show={showDeleteSoundModal}
+  title="사운드 삭제"
+  type="danger"
+  confirmText="삭제"
+  on:confirm={confirmDeleteSound}
+  on:cancel={cancelDeleteSound}
+>
+  <p>이 사운드를 삭제하시겠습니까?</p>
+</ConfirmModal>
+
+<!-- Delete Image Confirm Modal -->
+<ConfirmModal
+  show={showDeleteImageModal}
+  title="이미지 삭제"
+  type="danger"
+  confirmText="삭제"
+  on:confirm={confirmDeleteImage}
+  on:cancel={cancelDeleteImage}
+>
+  <p>이 이미지를 삭제하시겠습니까?</p>
+</ConfirmModal>

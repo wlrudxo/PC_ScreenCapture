@@ -7,8 +7,18 @@
   export let confirmText = '확인';
   export let cancelText = '취소';
   export let type = 'warning'; // warning, danger, info
+  export let mode = 'confirm'; // confirm, alert, prompt
+  export let placeholder = ''; // prompt mode placeholder
+  export let initialValue = ''; // prompt mode initial value
+
+  let inputValue = '';
 
   const dispatch = createEventDispatcher();
+
+  // Reset input value when modal opens
+  $: if (show && mode === 'prompt') {
+    inputValue = initialValue;
+  }
 
   const typeConfig = {
     warning: {
@@ -37,11 +47,25 @@
   $: config = typeConfig[type] || typeConfig.warning;
 
   function handleConfirm() {
-    dispatch('confirm');
+    if (mode === 'prompt') {
+      dispatch('confirm', { value: inputValue });
+    } else {
+      dispatch('confirm');
+    }
   }
 
   function handleCancel() {
-    dispatch('cancel');
+    if (mode === 'prompt') {
+      dispatch('cancel', { value: null });
+    } else {
+      dispatch('cancel');
+    }
+  }
+
+  function handleKeydown(e) {
+    if (e.key === 'Enter' && mode === 'prompt') {
+      handleConfirm();
+    }
   }
 </script>
 
@@ -60,17 +84,29 @@
         <h3 class="text-lg font-semibold text-text-primary">{title}</h3>
       </div>
 
-      <div class="text-sm text-text-secondary space-y-3 mb-6">
+      <div class="text-sm text-text-secondary space-y-3 mb-4">
         <slot />
       </div>
 
+      {#if mode === 'prompt'}
+        <input
+          type="text"
+          bind:value={inputValue}
+          on:keydown={handleKeydown}
+          placeholder={placeholder}
+          class="w-full px-3 py-2 mb-4 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+        />
+      {/if}
+
       <div class="flex gap-3 justify-end">
-        <button
-          on:click={handleCancel}
-          class="px-4 py-2 rounded-lg bg-bg-tertiary border border-border text-text-secondary hover:bg-bg-hover transition-colors"
-        >
-          {cancelText}
-        </button>
+        {#if mode !== 'alert'}
+          <button
+            on:click={handleCancel}
+            class="px-4 py-2 rounded-lg bg-bg-tertiary border border-border text-text-secondary hover:bg-bg-hover transition-colors"
+          >
+            {cancelText}
+          </button>
+        {/if}
         <button
           on:click={handleConfirm}
           class="px-4 py-2 rounded-lg {config.btnBg} {config.btnText} font-medium transition-colors"

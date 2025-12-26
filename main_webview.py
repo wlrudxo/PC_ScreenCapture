@@ -8,17 +8,27 @@ import sys
 import os
 import threading
 import time
+import asyncio
+import webbrowser
 from pathlib import Path
 
-import webview
+try:
+    import webview
+    WEBVIEW_AVAILABLE = True
+except ImportError:
+    WEBVIEW_AVAILABLE = False
+    print("[Warning] pywebview not available, using browser fallback")
+
 import pystray
 from PIL import Image
 import uvicorn
 
-from backend.api_server import app as fastapi_app
+from backend.api_server import app as fastapi_app, ws_manager
 from backend.database import DatabaseManager
-from backend.monitor_engine import MonitorEngine
+from backend.monitor_engine_thread import MonitorEngineThread
+from backend.rule_engine import RuleEngine
 from backend.config import AppConfig
+from backend.log_generator import ActivityLogGenerator
 
 
 class ActivityTrackerApp:
@@ -30,6 +40,8 @@ class ActivityTrackerApp:
         self.api_server_thread = None
         self.monitor_engine = None
         self.db_manager = None
+        self.rule_engine = None
+        self.log_generator = None
         self.running = True
 
         # 포트 설정
@@ -76,9 +88,62 @@ class ActivityTrackerApp:
         self.db_manager = DatabaseManager()
         self.db_manager.cleanup_unfinished_activities()
 
-        # MonitorEngine은 QThread 기반이라 별도 처리 필요
-        # 여기서는 간단히 import만 해둠 (실제 구동은 PyQt 없이 별도 구현 필요)
-        print("[Monitor Engine] Ready (requires separate implementation for non-Qt)")
+        # 룰 엔진 초기화
+        self.rule_engine = RuleEngine(self.db_manager)
+
+        # 모니터링 엔진 초기화 (threading 기반)
+        self.monitor_engine = MonitorEngineThread(
+            db_manager=self.db_manager,
+            rule_engine=self.rule_engine,
+            on_activity_detected=self._on_activity_detected,
+            on_toast_requested=self._on_toast_requested
+        )
+
+        # 모니터링 시작
+        self.monitor_engine.start()
+        print("[Monitor Engine] Started (threading-based)")
+
+        # 로그 생성기 초기화 및 실행
+        self._start_log_generator()
+
+    def _start_log_generator(self):
+        """활동 로그 생성기 시작 (백그라운드)"""
+        def generate_logs():
+            try:
+                from datetime import date
+                self.log_generator = ActivityLogGenerator(self.db_manager)
+                # 오늘 일간 로그 + 최근 로그 생성
+                self.log_generator.generate_daily_log(date.today())
+                self.log_generator.generate_recent_log()
+                print("[Log Generator] Logs generated successfully")
+            except Exception as e:
+                print(f"[Log Generator] Error: {e}")
+
+        threading.Thread(target=generate_logs, daemon=True).start()
+
+    def _on_activity_detected(self, activity_info: dict):
+        """활동 감지 시 WebSocket으로 브로드캐스트"""
+        try:
+            # asyncio 이벤트 루프에서 실행
+            asyncio.run(ws_manager.broadcast({
+                "type": "activity_update",
+                "data": activity_info
+            }))
+        except Exception as e:
+            print(f"[WebSocket] Broadcast error: {e}")
+
+    def _on_toast_requested(self, tag_id: int, message: str, cooldown: int):
+        """토스트 알림 요청 처리"""
+        try:
+            # NotificationManager는 MonitorEngine 내부에 있음
+            self.monitor_engine.notification_manager.show(
+                tag_id=tag_id,
+                title="Activity Tracker",
+                message=message,
+                cooldown=cooldown
+            )
+        except Exception as e:
+            print(f"[Notification] Error: {e}")
 
     def create_tray_icon(self):
         """시스템 트레이 아이콘 생성"""
@@ -117,6 +182,11 @@ class ActivityTrackerApp:
         """앱 종료"""
         self.running = False
 
+        # 모니터링 엔진 종료
+        if self.monitor_engine and self.monitor_engine.is_alive():
+            print("[App] Stopping monitor engine...")
+            self.monitor_engine.stop(timeout=3.0)
+
         if self.tray_icon:
             self.tray_icon.stop()
 
@@ -145,6 +215,9 @@ class ActivityTrackerApp:
         self.start_api_server()
         time.sleep(1)  # 서버 시작 대기
 
+        # 모니터링 엔진 시작
+        self.start_monitor_engine()
+
         # 트레이 아이콘 시작 (별도 스레드)
         tray_thread = threading.Thread(target=self.run_tray, daemon=True)
         tray_thread.start()
@@ -164,7 +237,8 @@ class ActivityTrackerApp:
         self.window.events.closing += self.on_closing
 
         # WebView 시작 (메인 스레드에서 실행)
-        webview.start(debug=os.environ.get('DEV_MODE') == '1')
+        # EdgeChromium 백엔드 사용 (Windows 10/11 기본 탑재)
+        webview.start(debug=os.environ.get('DEV_MODE') == '1', gui='edgechromium')
 
 
 def main():

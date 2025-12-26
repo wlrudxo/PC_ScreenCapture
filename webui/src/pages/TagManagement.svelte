@@ -22,7 +22,9 @@
     enabled: true,
     process_pattern: '',
     url_pattern: '',
-    window_title_pattern: ''
+    window_title_pattern: '',
+    chrome_profile: '',
+    process_path_pattern: ''
   };
 
   async function loadData() {
@@ -94,7 +96,9 @@
           enabled: rule.enabled,
           process_pattern: rule.process_pattern || '',
           url_pattern: rule.url_pattern || '',
-          window_title_pattern: rule.window_title_pattern || ''
+          window_title_pattern: rule.window_title_pattern || '',
+          chrome_profile: rule.chrome_profile || '',
+          process_path_pattern: rule.process_path_pattern || ''
         }
       : {
           name: '',
@@ -103,7 +107,9 @@
           enabled: true,
           process_pattern: '',
           url_pattern: '',
-          window_title_pattern: ''
+          window_title_pattern: '',
+          chrome_profile: '',
+          process_path_pattern: ''
         };
     showRuleModal = true;
   }
@@ -114,7 +120,9 @@
         ...ruleForm,
         process_pattern: ruleForm.process_pattern || null,
         url_pattern: ruleForm.url_pattern || null,
-        window_title_pattern: ruleForm.window_title_pattern || null
+        window_title_pattern: ruleForm.window_title_pattern || null,
+        chrome_profile: ruleForm.chrome_profile || null,
+        process_path_pattern: ruleForm.process_path_pattern || null
       };
 
       if (editingRule) {
@@ -237,72 +245,70 @@
     {:else if rules.length === 0}
       <div class="p-8 text-center text-text-muted">규칙이 없습니다</div>
     {:else}
-      <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead class="bg-bg-secondary">
-            <tr>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">상태</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">우선순위</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">이름</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">태그</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">프로세스</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">URL 패턴</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider w-20">작업</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-border">
-            {#each rules as rule}
-              <tr class="hover:bg-bg-hover transition-colors">
-                <td class="px-4 py-3">
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={rule.enabled}
-                      on:change={() => toggleRule(rule)}
-                      class="sr-only peer"
-                    >
-                    <div class="w-9 h-5 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
-                  </label>
-                </td>
-                <td class="px-4 py-3 text-sm text-text-primary">{rule.priority}</td>
-                <td class="px-4 py-3 text-sm text-text-primary font-medium">{rule.name}</td>
-                <td class="px-4 py-3">
-                  <span
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
-                    style="background-color: {rule.tag?.color || '#607D8B'}"
+      <table class="w-full table-fixed">
+        <thead class="bg-bg-secondary">
+          <tr>
+            <th class="w-16 px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">상태</th>
+            <th class="w-16 px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">우선</th>
+            <th class="w-28 px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">이름</th>
+            <th class="w-20 px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">태그</th>
+            <th class="px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">프로세스</th>
+            <th class="px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">URL 패턴</th>
+            <th class="w-20 px-3 py-3 text-left text-xs font-medium text-text-muted uppercase">작업</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          {#each rules as rule}
+            <tr class="hover:bg-bg-hover transition-colors">
+              <td class="px-3 py-3">
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rule.enabled}
+                    on:change={() => toggleRule(rule)}
+                    class="sr-only peer"
                   >
-                    {rule.tag?.name || rule.tag_name || '미분류'}
-                  </span>
-                </td>
-                <td class="px-4 py-3 text-sm text-text-secondary font-mono">{rule.process_pattern || '-'}</td>
-                <td class="px-4 py-3 text-sm text-text-secondary font-mono">{rule.url_pattern || '-'}</td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-1">
-                    <button
-                      aria-label="수정"
-                      class="p-1.5 rounded hover:bg-bg-hover transition-colors"
-                      on:click={() => openRuleModal(rule)}
-                    >
-                      <svg class="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                    </button>
-                    <button
-                      aria-label="삭제"
-                      class="p-1.5 rounded hover:bg-bg-hover transition-colors"
-                      on:click={() => deleteRule(rule)}
-                    >
-                      <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+                  <div class="w-9 h-5 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                </label>
+              </td>
+              <td class="px-3 py-3 text-sm text-text-primary">{rule.priority}</td>
+              <td class="px-3 py-3 text-sm text-text-primary font-medium truncate" title={rule.name}>{rule.name}</td>
+              <td class="px-3 py-3">
+                <span
+                  class="inline-block px-2 py-0.5 rounded text-xs font-medium text-white whitespace-nowrap"
+                  style="background-color: {rule.tag?.color || '#607D8B'}"
+                >
+                  {rule.tag?.name || rule.tag_name || '미분류'}
+                </span>
+              </td>
+              <td class="px-3 py-3 text-sm text-text-secondary font-mono truncate" title={rule.process_pattern || ''}>{rule.process_pattern || '-'}</td>
+              <td class="px-3 py-3 text-sm text-text-secondary font-mono truncate" title={rule.url_pattern || ''}>{rule.url_pattern || '-'}</td>
+              <td class="px-3 py-3">
+                <div class="flex items-center gap-1">
+                  <button
+                    aria-label="수정"
+                    class="p-1.5 rounded hover:bg-bg-secondary transition-colors"
+                    on:click={() => openRuleModal(rule)}
+                  >
+                    <svg class="w-4 h-4 text-text-muted hover:text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                  <button
+                    aria-label="삭제"
+                    class="p-1.5 rounded hover:bg-bg-secondary transition-colors"
+                    on:click={() => deleteRule(rule)}
+                  >
+                    <svg class="w-4 h-4 text-red-400 hover:text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     {/if}
   </div>
 </div>
@@ -438,6 +444,26 @@
             bind:value={ruleForm.window_title_pattern}
             class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary font-mono text-sm focus:border-accent outline-none"
             placeholder="예: *Visual Studio*"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm text-text-secondary mb-1">Chrome 프로필</label>
+          <input
+            type="text"
+            bind:value={ruleForm.chrome_profile}
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary font-mono text-sm focus:border-accent outline-none"
+            placeholder="예: Profile 1, Default"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm text-text-secondary mb-1">프로세스 경로 패턴</label>
+          <input
+            type="text"
+            bind:value={ruleForm.process_path_pattern}
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary font-mono text-sm focus:border-accent outline-none"
+            placeholder="예: *\\Obsidian\\*, *\\AnkiProgramFiles\\*"
           />
         </div>
       </div>

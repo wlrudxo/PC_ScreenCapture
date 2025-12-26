@@ -11,6 +11,7 @@
 
   let tagStats = [];
   let processStats = [];
+  let hourlyStats = [];
   let summaryStats = {
     totalSeconds: 0,
     activityCount: 0,
@@ -32,11 +33,15 @@
     error = null;
 
     try {
-      const data = await api.getDashboardDaily(date);
+      // 일간 통계와 시간대별 통계 동시 로드
+      const [dailyData, hourlyData] = await Promise.all([
+        api.getDashboardDaily(date),
+        api.getDashboardHourly(date)
+      ]);
 
       // 태그별 통계 처리
-      const totalSeconds = data.summary?.totalSeconds || 0;
-      tagStats = (data.tagStats || []).map(tag => ({
+      const totalSeconds = dailyData.summary?.totalSeconds || 0;
+      tagStats = (dailyData.tagStats || []).map(tag => ({
         id: tag.tag_id,
         name: tag.tag_name,
         color: tag.tag_color,
@@ -45,20 +50,23 @@
       }));
 
       // 프로세스별 통계 처리
-      const procTotal = (data.processStats || []).reduce((sum, p) => sum + (p.total_seconds || 0), 0);
-      processStats = (data.processStats || []).map(proc => ({
+      const procTotal = (dailyData.processStats || []).reduce((sum, p) => sum + (p.total_seconds || 0), 0);
+      processStats = (dailyData.processStats || []).map(proc => ({
         name: proc.process_name,
         duration: Math.round(proc.total_seconds || 0),
         percentage: procTotal > 0 ? Math.round((proc.total_seconds / procTotal) * 100) : 0
       }));
 
+      // 시간대별 통계
+      hourlyStats = hourlyData.hourlyStats || [];
+
       // 요약 통계
       summaryStats = {
-        totalSeconds: Math.round(data.summary?.totalSeconds || 0),
-        activityCount: data.summary?.activityCount || 0,
-        firstActivity: data.summary?.firstActivity ? formatTime(data.summary.firstActivity) : '-',
-        lastActivity: data.summary?.lastActivity ? formatTime(data.summary.lastActivity) : '-',
-        tagSwitches: data.summary?.tagSwitches || 0
+        totalSeconds: Math.round(dailyData.summary?.totalSeconds || 0),
+        activityCount: dailyData.summary?.activityCount || 0,
+        firstActivity: dailyData.summary?.firstActivity ? formatTime(dailyData.summary.firstActivity) : '-',
+        lastActivity: dailyData.summary?.lastActivity ? formatTime(dailyData.summary.lastActivity) : '-',
+        tagSwitches: dailyData.summary?.tagSwitches || 0
       };
 
       // 차트 업데이트
@@ -107,7 +115,29 @@
       pieChart.update();
     }
 
-    // Bar Chart는 시간대별 데이터가 필요 (추후 API 확장)
+    // Bar Chart 업데이트 (시간대별)
+    if (barChart && hourlyStats.length > 0) {
+      // 태그별로 데이터셋 그룹화
+      const tagMap = new Map();
+      for (const hourData of hourlyStats) {
+        for (const tag of hourData.tags) {
+          if (!tagMap.has(tag.tag_id)) {
+            tagMap.set(tag.tag_id, {
+              label: tag.tag_name,
+              backgroundColor: tag.tag_color,
+              data: new Array(hourlyStats.length).fill(0),
+              borderRadius: 4
+            });
+          }
+          const hourIndex = hourlyStats.indexOf(hourData);
+          tagMap.get(tag.tag_id).data[hourIndex] = tag.minutes;
+        }
+      }
+
+      barChart.data.labels = hourlyStats.map(h => `${h.hour}시`);
+      barChart.data.datasets = Array.from(tagMap.values());
+      barChart.update();
+    }
   }
 
   function initCharts() {
@@ -136,28 +166,15 @@
       });
     }
 
-    // Bar Chart (시간대별 - 추후 API 연동)
+    // Bar Chart (시간대별)
     const barCtx = document.getElementById('hourlyBarChart');
     if (barCtx && !barChart) {
-      const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7시~20시
+      const hours = Array.from({ length: 15 }, (_, i) => i + 7); // 7시~21시
       barChart = new Chart(barCtx, {
         type: 'bar',
         data: {
           labels: hours.map(h => `${h}시`),
-          datasets: [
-            {
-              label: '업무',
-              data: hours.map(() => 0),
-              backgroundColor: '#4CAF50',
-              borderRadius: 4
-            },
-            {
-              label: '딴짓',
-              data: hours.map(() => 0),
-              backgroundColor: '#FF5722',
-              borderRadius: 4
-            }
-          ]
+          datasets: []  // 동적으로 채워짐
         },
         options: {
           responsive: true,
@@ -166,19 +183,25 @@
             x: {
               stacked: true,
               grid: { display: false },
-              ticks: { color: '#666' }
+              ticks: { color: '#888' }
             },
             y: {
               stacked: true,
               grid: { color: '#333' },
-              ticks: { color: '#666' },
-              title: { display: true, text: '분', color: '#666' }
+              ticks: { color: '#888' },
+              title: { display: true, text: '분', color: '#888' },
+              beginAtZero: true
             }
           },
           plugins: {
             legend: {
               position: 'top',
-              labels: { color: '#a0a0a0', usePointStyle: true }
+              labels: { color: '#a0a0a0', usePointStyle: true, padding: 15 }
+            },
+            tooltip: {
+              callbacks: {
+                label: (context) => `${context.dataset.label}: ${context.parsed.y}분`
+              }
             }
           }
         }
@@ -193,11 +216,11 @@
   }
 
   onMount(() => {
-    // 초기 로드
-    loadDashboardData($selectedDate);
+    // 차트 먼저 초기화
+    initCharts();
 
-    // 차트 초기화 (약간의 딜레이 후)
-    setTimeout(initCharts, 100);
+    // 그 다음 데이터 로드 (로드 완료 후 updateCharts 호출됨)
+    loadDashboardData($selectedDate);
 
     return () => {
       pieChart?.destroy();

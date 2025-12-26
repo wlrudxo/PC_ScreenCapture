@@ -27,6 +27,7 @@ export const api = {
   // Dashboard
   getDashboardDaily: (date) => request(`/dashboard/daily?date=${date}`),
   getDashboardPeriod: (start, end) => request(`/dashboard/period?start=${start}&end=${end}`),
+  getDashboardHourly: (date) => request(`/dashboard/hourly?date=${date}`),
 
   // Timeline
   getTimeline: (date, tagId = null) => {

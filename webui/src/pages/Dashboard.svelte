@@ -1,46 +1,119 @@
 <script>
   import { onMount } from 'svelte';
   import { Chart, registerables } from 'chart.js';
-  import { selectedDate, formattedDate, formatDuration } from '../lib/stores/app.js';
+  import { api } from '../lib/api/client.js';
+  import { selectedDate, formattedDate, formatDuration, formatTime } from '../lib/stores/app.js';
 
   Chart.register(...registerables);
 
-  // Demo data for development
-  let tagStats = [
-    { id: 1, name: '업무', color: '#4CAF50', duration: 14400, percentage: 60 },
-    { id: 2, name: '딴짓', color: '#FF5722', duration: 4800, percentage: 20 },
-    { id: 3, name: '자리비움', color: '#9E9E9E', duration: 2400, percentage: 10 },
-    { id: 4, name: '미분류', color: '#607D8B', duration: 2400, percentage: 10 }
-  ];
+  let loading = true;
+  let error = null;
 
-  let processStats = [
-    { name: 'chrome.exe', duration: 9600, percentage: 40 },
-    { name: 'Code.exe', duration: 7200, percentage: 30 },
-    { name: 'explorer.exe', duration: 4800, percentage: 20 },
-    { name: 'Discord.exe', duration: 2400, percentage: 10 }
-  ];
-
-  let hourlyData = Array.from({ length: 24 }, (_, i) => ({
-    hour: i,
-    업무: Math.random() * 50 + 10,
-    딴짓: Math.random() * 20
-  }));
-
+  let tagStats = [];
+  let processStats = [];
   let summaryStats = {
-    totalTime: 24000,
-    activityCount: 156,
-    firstActivity: '09:15',
-    lastActivity: '18:45',
-    tagSwitches: 42
+    totalSeconds: 0,
+    activityCount: 0,
+    firstActivity: null,
+    lastActivity: null,
+    tagSwitches: 0
   };
 
   let pieChart;
   let barChart;
 
-  onMount(() => {
+  // 날짜 변경 시 데이터 다시 로드
+  $: if ($selectedDate) {
+    loadDashboardData($selectedDate);
+  }
+
+  async function loadDashboardData(date) {
+    loading = true;
+    error = null;
+
+    try {
+      const data = await api.getDashboardDaily(date);
+
+      // 태그별 통계 처리
+      const totalSeconds = data.summary?.totalSeconds || 0;
+      tagStats = (data.tagStats || []).map(tag => ({
+        id: tag.tag_id,
+        name: tag.tag_name,
+        color: tag.tag_color,
+        duration: Math.round(tag.total_seconds || 0),
+        percentage: totalSeconds > 0 ? Math.round((tag.total_seconds / totalSeconds) * 100) : 0
+      }));
+
+      // 프로세스별 통계 처리
+      const procTotal = (data.processStats || []).reduce((sum, p) => sum + (p.total_seconds || 0), 0);
+      processStats = (data.processStats || []).map(proc => ({
+        name: proc.process_name,
+        duration: Math.round(proc.total_seconds || 0),
+        percentage: procTotal > 0 ? Math.round((proc.total_seconds / procTotal) * 100) : 0
+      }));
+
+      // 요약 통계
+      summaryStats = {
+        totalSeconds: Math.round(data.summary?.totalSeconds || 0),
+        activityCount: data.summary?.activityCount || 0,
+        firstActivity: data.summary?.firstActivity ? formatTime(data.summary.firstActivity) : '-',
+        lastActivity: data.summary?.lastActivity ? formatTime(data.summary.lastActivity) : '-',
+        tagSwitches: data.summary?.tagSwitches || 0
+      };
+
+      // 차트 업데이트
+      updateCharts();
+
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+      error = err.message;
+      // API 연결 실패 시 데모 데이터 유지
+      if (tagStats.length === 0) {
+        loadDemoData();
+      }
+    } finally {
+      loading = false;
+    }
+  }
+
+  function loadDemoData() {
+    tagStats = [
+      { id: 1, name: '업무', color: '#4CAF50', duration: 14400, percentage: 60 },
+      { id: 2, name: '딴짓', color: '#FF5722', duration: 4800, percentage: 20 },
+      { id: 3, name: '자리비움', color: '#9E9E9E', duration: 2400, percentage: 10 },
+      { id: 4, name: '미분류', color: '#607D8B', duration: 2400, percentage: 10 }
+    ];
+    processStats = [
+      { name: 'chrome.exe', duration: 9600, percentage: 40 },
+      { name: 'Code.exe', duration: 7200, percentage: 30 },
+      { name: 'explorer.exe', duration: 4800, percentage: 20 },
+      { name: 'Discord.exe', duration: 2400, percentage: 10 }
+    ];
+    summaryStats = {
+      totalSeconds: 24000,
+      activityCount: 156,
+      firstActivity: '09:15',
+      lastActivity: '18:45',
+      tagSwitches: 42
+    };
+  }
+
+  function updateCharts() {
+    // Pie Chart 업데이트
+    if (pieChart) {
+      pieChart.data.labels = tagStats.map(t => t.name);
+      pieChart.data.datasets[0].data = tagStats.map(t => t.duration);
+      pieChart.data.datasets[0].backgroundColor = tagStats.map(t => t.color);
+      pieChart.update();
+    }
+
+    // Bar Chart는 시간대별 데이터가 필요 (추후 API 확장)
+  }
+
+  function initCharts() {
     // Pie Chart
     const pieCtx = document.getElementById('tagPieChart');
-    if (pieCtx) {
+    if (pieCtx && !pieChart) {
       pieChart = new Chart(pieCtx, {
         type: 'doughnut',
         data: {
@@ -57,31 +130,30 @@
           maintainAspectRatio: false,
           cutout: '65%',
           plugins: {
-            legend: {
-              display: false
-            }
+            legend: { display: false }
           }
         }
       });
     }
 
-    // Hourly Bar Chart
+    // Bar Chart (시간대별 - 추후 API 연동)
     const barCtx = document.getElementById('hourlyBarChart');
-    if (barCtx) {
+    if (barCtx && !barChart) {
+      const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7시~20시
       barChart = new Chart(barCtx, {
         type: 'bar',
         data: {
-          labels: hourlyData.map(d => `${d.hour}시`),
+          labels: hours.map(h => `${h}시`),
           datasets: [
             {
               label: '업무',
-              data: hourlyData.map(d => d.업무),
+              data: hours.map(() => 0),
               backgroundColor: '#4CAF50',
               borderRadius: 4
             },
             {
               label: '딴짓',
-              data: hourlyData.map(d => d.딴짓),
+              data: hours.map(() => 0),
               backgroundColor: '#FF5722',
               borderRadius: 4
             }
@@ -99,7 +171,8 @@
             y: {
               stacked: true,
               grid: { color: '#333' },
-              ticks: { color: '#666' }
+              ticks: { color: '#666' },
+              title: { display: true, text: '분', color: '#666' }
             }
           },
           plugins: {
@@ -111,6 +184,20 @@
         }
       });
     }
+  }
+
+  function changeDate(delta) {
+    const current = new Date($selectedDate);
+    current.setDate(current.getDate() + delta);
+    $selectedDate = current.toISOString().split('T')[0];
+  }
+
+  onMount(() => {
+    // 초기 로드
+    loadDashboardData($selectedDate);
+
+    // 차트 초기화 (약간의 딜레이 후)
+    setTimeout(initCharts, 100);
 
     return () => {
       pieChart?.destroy();
@@ -127,7 +214,11 @@
       <p class="text-sm text-text-secondary mt-1">{$formattedDate}</p>
     </div>
     <div class="flex items-center gap-2">
-      <button class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors">
+      <button
+        aria-label="이전 날짜"
+        class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors"
+        on:click={() => changeDate(-1)}
+      >
         <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
         </svg>
@@ -137,7 +228,11 @@
         bind:value={$selectedDate}
         class="px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm"
       />
-      <button class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors">
+      <button
+        aria-label="다음 날짜"
+        class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors"
+        on:click={() => changeDate(1)}
+      >
         <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
@@ -145,11 +240,25 @@
     </div>
   </div>
 
+  <!-- Error Banner -->
+  {#if error}
+    <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm text-yellow-400">
+      API 연결 실패: {error} (데모 데이터 표시 중)
+    </div>
+  {/if}
+
+  <!-- Loading Overlay -->
+  {#if loading}
+    <div class="fixed inset-0 bg-bg-primary/50 flex items-center justify-center z-50">
+      <div class="text-text-secondary">로딩 중...</div>
+    </div>
+  {/if}
+
   <!-- Summary Cards -->
   <div class="grid grid-cols-5 gap-4">
     <div class="bg-bg-card rounded-xl p-4 border border-border">
       <div class="text-text-muted text-xs uppercase tracking-wide mb-1">총 활동 시간</div>
-      <div class="text-2xl font-bold text-text-primary">{formatDuration(summaryStats.totalTime)}</div>
+      <div class="text-2xl font-bold text-text-primary">{formatDuration(summaryStats.totalSeconds)}</div>
     </div>
     <div class="bg-bg-card rounded-xl p-4 border border-border">
       <div class="text-text-muted text-xs uppercase tracking-wide mb-1">활동 횟수</div>
@@ -189,6 +298,8 @@
               <span class="text-text-muted w-12 text-right">{tag.percentage}%</span>
             </div>
           </div>
+        {:else}
+          <div class="text-text-muted text-center py-4">데이터 없음</div>
         {/each}
       </div>
     </div>
@@ -218,6 +329,8 @@
           <span class="w-20 text-sm text-text-primary text-right">{formatDuration(proc.duration)}</span>
           <span class="w-12 text-sm text-text-muted text-right">{proc.percentage}%</span>
         </div>
+      {:else}
+        <div class="text-text-muted text-center py-4">데이터 없음</div>
       {/each}
     </div>
   </div>

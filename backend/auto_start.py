@@ -29,10 +29,10 @@ class AutoStartManager:
             # PyInstaller로 빌드된 경우
             return sys.executable
         else:
-            # 개발 모드: main.py를 python으로 실행
-            main_py = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'main.py'))
-            python_exe = sys.executable
-            return f'"{python_exe}" "{main_py}"'
+            # 개발 모드: BAT 파일 실행 (venv 활성화 포함)
+            project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            bat_path = os.path.join(project_dir, 'ActivityTracker.bat')
+            return f'"{bat_path}"'
 
     @staticmethod
     def is_enabled():

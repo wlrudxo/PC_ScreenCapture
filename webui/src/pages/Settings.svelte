@@ -6,23 +6,49 @@
   let error = null;
   let saving = false;
 
+  // General settings
   let settings = {
     polling_interval: '2',
     idle_threshold: '300',
     log_retention_days: '30'
   };
 
+  // Auto start
+  let autoStartEnabled = false;
+  let autoStartLoading = false;
+
+  // File inputs
+  let dbRestoreInput;
+  let rulesImportInput;
+
+  // Processing states
+  let backupInProgress = false;
+  let restoreInProgress = false;
+  let rulesExportInProgress = false;
+  let rulesImportInProgress = false;
+
+  // Rules import modal
+  let showRulesImportModal = false;
+  let rulesImportFile = null;
+  let rulesImportMergeMode = true;
+
   async function loadData() {
     loading = true;
     error = null;
 
     try {
-      const res = await api.getSettings();
+      const [settingsRes, autoStartRes] = await Promise.all([
+        api.getSettings(),
+        api.getAutoStart()
+      ]);
+
       settings = {
-        polling_interval: res.settings?.polling_interval || '2',
-        idle_threshold: res.settings?.idle_threshold || '300',
-        log_retention_days: res.settings?.log_retention_days || '30'
+        polling_interval: settingsRes.settings?.polling_interval || '2',
+        idle_threshold: settingsRes.settings?.idle_threshold || '300',
+        log_retention_days: settingsRes.settings?.log_retention_days || '30'
       };
+
+      autoStartEnabled = autoStartRes.enabled;
     } catch (err) {
       console.error('Failed to load settings:', err);
       error = err.message;
@@ -43,22 +69,135 @@
     }
   }
 
-  function handleExport() {
-    alert('내보내기 기능은 추후 구현 예정입니다.');
-  }
-
-  function handleImport() {
-    alert('가져오기 기능은 추후 구현 예정입니다.');
-  }
-
-  function handleDeleteUnclassified() {
-    if (confirm('미분류 활동을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      alert('삭제 기능은 추후 구현 예정입니다.');
+  async function toggleAutoStart() {
+    autoStartLoading = true;
+    try {
+      const res = await api.setAutoStart(autoStartEnabled);
+      autoStartEnabled = res.enabled;
+    } catch (err) {
+      alert('자동 시작 설정 실패: ' + err.message);
+      autoStartEnabled = !autoStartEnabled; // 롤백
+    } finally {
+      autoStartLoading = false;
     }
+  }
+
+  // === DB Backup/Restore ===
+  async function handleDbBackup() {
+    backupInProgress = true;
+    try {
+      await api.backupDatabase();
+      // 파일 다운로드가 자동으로 시작됨
+    } catch (err) {
+      alert('백업 실패: ' + err.message);
+    } finally {
+      backupInProgress = false;
+    }
+  }
+
+  function triggerDbRestore() {
+    dbRestoreInput.click();
+  }
+
+  async function handleDbRestore(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!confirm('경고: 현재 데이터베이스가 백업 파일로 교체됩니다.\n이 작업은 되돌릴 수 없습니다.\n\n계속하시겠습니까?')) {
+      event.target.value = '';
+      return;
+    }
+
+    restoreInProgress = true;
+    try {
+      const res = await api.restoreDatabase(file);
+      alert(res.message + '\n\n앱을 재시작해주세요.');
+    } catch (err) {
+      alert('복원 실패: ' + err.message);
+    } finally {
+      restoreInProgress = false;
+      event.target.value = '';
+    }
+  }
+
+  // === Rules Export/Import ===
+  async function handleRulesExport() {
+    rulesExportInProgress = true;
+    try {
+      const data = await api.exportRules();
+
+      // JSON 파일 다운로드
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `rules_export_${timestamp}.json`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      alert(`룰 내보내기 완료\n\n태그: ${data.tags?.length || 0}개\n룰: ${data.rules?.length || 0}개`);
+    } catch (err) {
+      alert('내보내기 실패: ' + err.message);
+    } finally {
+      rulesExportInProgress = false;
+    }
+  }
+
+  function triggerRulesImport() {
+    rulesImportInput.click();
+  }
+
+  function handleRulesFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    rulesImportFile = file;
+    rulesImportMergeMode = true;
+    showRulesImportModal = true;
+    event.target.value = '';
+  }
+
+  async function confirmRulesImport() {
+    if (!rulesImportFile) return;
+
+    rulesImportInProgress = true;
+    try {
+      const res = await api.importRules(rulesImportFile, rulesImportMergeMode);
+      alert(res.message);
+      showRulesImportModal = false;
+      rulesImportFile = null;
+    } catch (err) {
+      alert('가져오기 실패: ' + err.message);
+    } finally {
+      rulesImportInProgress = false;
+    }
+  }
+
+  function cancelRulesImport() {
+    showRulesImportModal = false;
+    rulesImportFile = null;
   }
 
   onMount(loadData);
 </script>
+
+<!-- Hidden file inputs -->
+<input
+  type="file"
+  accept=".db"
+  bind:this={dbRestoreInput}
+  on:change={handleDbRestore}
+  class="hidden"
+/>
+<input
+  type="file"
+  accept=".json"
+  bind:this={rulesImportInput}
+  on:change={handleRulesFileSelect}
+  class="hidden"
+/>
 
 <div class="p-6 space-y-6">
   <div>
@@ -80,6 +219,24 @@
     {#if loading}
       <div class="text-center text-text-muted py-4">로딩 중...</div>
     {:else}
+      <!-- Auto Start Toggle -->
+      <div class="flex items-center justify-between py-3 border-b border-border">
+        <div>
+          <div class="text-text-primary font-medium">Windows 시작 시 자동 실행</div>
+          <div class="text-sm text-text-muted">컴퓨터 시작 시 자동으로 실행됩니다</div>
+        </div>
+        <label class="relative inline-flex items-center {autoStartLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}">
+          <input
+            type="checkbox"
+            bind:checked={autoStartEnabled}
+            on:change={toggleAutoStart}
+            disabled={autoStartLoading}
+            class="sr-only peer"
+          >
+          <div class="w-11 h-6 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+        </label>
+      </div>
+
       <div class="grid grid-cols-2 gap-6">
         <div>
           <label for="polling" class="block text-sm font-medium text-text-secondary mb-2">
@@ -108,7 +265,7 @@
             max="600"
             class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
           />
-          <p class="text-xs text-text-muted mt-1">입력 없이 이 시간이 지나면 자리비움 처리 (기본값: 300초)</p>
+          <p class="text-xs text-text-muted mt-1">입력 없이 이 시간이 지나면 자리비움 처리</p>
         </div>
 
         <div>
@@ -123,7 +280,7 @@
             max="90"
             class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
           />
-          <p class="text-xs text-text-muted mt-1">활동 로그 자동 정리 기간 (기본값: 30일)</p>
+          <p class="text-xs text-text-muted mt-1">activity_logs/recent.log에 포함할 일수</p>
         </div>
 
         <div class="flex items-end">
@@ -143,45 +300,68 @@
   <div class="bg-bg-card rounded-xl border border-border p-5 space-y-5">
     <h2 class="text-lg font-semibold text-text-primary">데이터 관리</h2>
 
-    <div class="grid grid-cols-3 gap-4">
-      <button
-        on:click={handleExport}
-        class="flex flex-col items-center gap-3 p-5 bg-bg-secondary rounded-xl border border-border hover:border-accent transition-colors group"
-      >
-        <svg class="w-8 h-8 text-text-muted group-hover:text-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-        </svg>
-        <div class="text-center">
-          <div class="font-medium text-text-primary">내보내기</div>
-          <div class="text-xs text-text-muted mt-1">데이터베이스 백업</div>
-        </div>
-      </button>
+    <!-- DB Backup/Restore -->
+    <div class="space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="font-medium text-text-primary">데이터베이스</span>
+        <span class="text-xs text-text-muted">(활동 기록 포함)</span>
+      </div>
 
-      <button
-        on:click={handleImport}
-        class="flex flex-col items-center gap-3 p-5 bg-bg-secondary rounded-xl border border-border hover:border-accent transition-colors group"
-      >
-        <svg class="w-8 h-8 text-text-muted group-hover:text-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        <div class="text-center">
-          <div class="font-medium text-text-primary">가져오기</div>
-          <div class="text-xs text-text-muted mt-1">백업에서 복원</div>
-        </div>
-      </button>
+      <div class="grid grid-cols-2 gap-4">
+        <button
+          on:click={handleDbBackup}
+          disabled={backupInProgress}
+          class="flex items-center justify-center gap-2 px-4 py-3 bg-bg-secondary rounded-lg border border-border hover:border-accent transition-colors disabled:opacity-50"
+        >
+          <svg class="w-5 h-5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span class="text-text-primary">{backupInProgress ? '백업 중...' : '전체 백업'}</span>
+        </button>
 
-      <button
-        on:click={handleDeleteUnclassified}
-        class="flex flex-col items-center gap-3 p-5 bg-bg-secondary rounded-xl border border-border hover:border-red-500/50 transition-colors group"
-      >
-        <svg class="w-8 h-8 text-text-muted group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-        <div class="text-center">
-          <div class="font-medium text-text-primary">미분류 삭제</div>
-          <div class="text-xs text-text-muted mt-1">미분류 활동 정리</div>
-        </div>
-      </button>
+        <button
+          on:click={triggerDbRestore}
+          disabled={restoreInProgress}
+          class="flex items-center justify-center gap-2 px-4 py-3 bg-bg-secondary rounded-lg border border-border hover:border-accent transition-colors disabled:opacity-50"
+        >
+          <svg class="w-5 h-5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span class="text-text-primary">{restoreInProgress ? '복원 중...' : '백업 복원'}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Rules Export/Import -->
+    <div class="space-y-3 pt-3 border-t border-border">
+      <div class="flex items-center gap-2">
+        <span class="font-medium text-text-primary">분류 룰</span>
+        <span class="text-xs text-text-muted">(태그 + 룰, 활동 기록 미포함)</span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <button
+          on:click={handleRulesExport}
+          disabled={rulesExportInProgress}
+          class="flex items-center justify-center gap-2 px-4 py-3 bg-bg-secondary rounded-lg border border-border hover:border-accent transition-colors disabled:opacity-50"
+        >
+          <svg class="w-5 h-5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span class="text-text-primary">{rulesExportInProgress ? '내보내기 중...' : '룰 내보내기'}</span>
+        </button>
+
+        <button
+          on:click={triggerRulesImport}
+          disabled={rulesImportInProgress}
+          class="flex items-center justify-center gap-2 px-4 py-3 bg-bg-secondary rounded-lg border border-border hover:border-accent transition-colors disabled:opacity-50"
+        >
+          <svg class="w-5 h-5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span class="text-text-primary">{rulesImportInProgress ? '가져오기 중...' : '룰 가져오기'}</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -207,3 +387,73 @@
     </div>
   </div>
 </div>
+
+<!-- Rules Import Modal -->
+{#if showRulesImportModal}
+  <div
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    on:click={cancelRulesImport}
+    on:keydown={(e) => e.key === 'Escape' && cancelRulesImport()}
+    role="dialog"
+    tabindex="-1"
+  >
+    <div
+      class="bg-bg-card rounded-xl p-6 w-96 border border-border"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="document"
+    >
+      <h3 class="text-lg font-semibold text-text-primary mb-4">룰 가져오기</h3>
+
+      <div class="space-y-4">
+        <div class="text-sm text-text-secondary">
+          파일: <span class="text-text-primary">{rulesImportFile?.name}</span>
+        </div>
+
+        <div class="space-y-3">
+          <label class="flex items-start gap-3 p-3 bg-bg-secondary rounded-lg cursor-pointer border {rulesImportMergeMode ? 'border-accent' : 'border-transparent'}">
+            <input
+              type="radio"
+              bind:group={rulesImportMergeMode}
+              value={true}
+              class="mt-1"
+            />
+            <div>
+              <div class="font-medium text-text-primary">병합 모드</div>
+              <div class="text-xs text-text-muted">기존 룰 유지 + 새 룰 추가. 같은 이름의 태그는 기존 것 사용.</div>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-3 p-3 bg-bg-secondary rounded-lg cursor-pointer border {!rulesImportMergeMode ? 'border-accent' : 'border-transparent'}">
+            <input
+              type="radio"
+              bind:group={rulesImportMergeMode}
+              value={false}
+              class="mt-1"
+            />
+            <div>
+              <div class="font-medium text-text-primary">교체 모드</div>
+              <div class="text-xs text-yellow-500">기존 룰 삭제 + 새 룰만 추가. 태그는 유지.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 mt-6">
+        <button
+          on:click={cancelRulesImport}
+          class="px-4 py-2 bg-bg-secondary text-text-primary rounded-lg hover:bg-bg-hover transition-colors"
+        >
+          취소
+        </button>
+        <button
+          on:click={confirmRulesImport}
+          disabled={rulesImportInProgress}
+          class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-colors"
+        >
+          {rulesImportInProgress ? '가져오는 중...' : '가져오기'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}

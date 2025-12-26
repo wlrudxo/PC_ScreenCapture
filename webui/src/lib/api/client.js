@@ -122,9 +122,43 @@ export const api = {
   getFocusSettings: () => request('/focus'),
   updateFocusSettings: (tagId, data) => request(`/focus/${tagId}`, { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Import/Export
-  exportData: () => request('/data/export'),
-  importData: (data) => request('/data/import', { method: 'POST', body: JSON.stringify(data) })
+  // Auto Start
+  getAutoStart: () => request('/settings/autostart'),
+  setAutoStart: (enabled) => request('/settings/autostart', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+
+  // Data Management - DB Backup/Restore
+  backupDatabase: () => {
+    // 파일 다운로드를 위해 직접 fetch 사용
+    const url = `${API_BASE}/data/db/backup`;
+    return fetch(url).then(res => {
+      if (!res.ok) throw new Error('Backup failed');
+      return res.blob();
+    }).then(blob => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `activity_tracker_backup_${timestamp}.db`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      return { success: true };
+    });
+  },
+  restoreDatabase: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return uploadRequest('/data/db/restore', formData);
+  },
+
+  // Data Management - Rules Export/Import
+  exportRules: () => request('/data/rules/export'),
+  importRules: (file, mergeMode = true) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('merge_mode', mergeMode.toString());
+    return uploadRequest('/data/rules/import', formData);
+  }
 };
 
 /**

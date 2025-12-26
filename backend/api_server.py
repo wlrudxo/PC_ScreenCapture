@@ -919,6 +919,161 @@ async def update_tag_alert_settings(tag_id: int, data: TagAlertUpdate):
     return {"message": "Tag alert settings updated"}
 
 
+# === Auto Start & Data Management Endpoints ===
+
+@app.get("/api/settings/autostart")
+async def get_autostart_status():
+    """자동 시작 설정 상태 조회"""
+    from backend.auto_start import AutoStartManager
+    return {"enabled": AutoStartManager.is_enabled()}
+
+
+@app.put("/api/settings/autostart")
+async def set_autostart_status(data: dict):
+    """자동 시작 설정 변경"""
+    from backend.auto_start import AutoStartManager
+
+    enabled = data.get('enabled', False)
+
+    if enabled:
+        success = AutoStartManager.enable()
+    else:
+        success = AutoStartManager.disable()
+
+    if not success:
+        raise HTTPException(500, "Failed to update auto-start setting")
+
+    return {"enabled": AutoStartManager.is_enabled()}
+
+
+@app.get("/api/data/db/backup")
+async def backup_database():
+    """데이터베이스 백업 (파일 다운로드)"""
+    from fastapi.responses import FileResponse
+    from backend.import_export import ImportExportManager
+    from backend.config import AppConfig
+    import tempfile
+
+    db = get_db()
+    ie_manager = ImportExportManager(db)
+
+    # 임시 파일에 백업
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_name = f"activity_tracker_backup_{timestamp}.db"
+    backup_path = Path(tempfile.gettempdir()) / backup_name
+
+    success = ie_manager.export_database(str(backup_path))
+
+    if not success:
+        raise HTTPException(500, "Failed to create backup")
+
+    return FileResponse(
+        path=str(backup_path),
+        filename=backup_name,
+        media_type="application/octet-stream"
+    )
+
+
+@app.post("/api/data/db/restore")
+async def restore_database(file: UploadFile = File(...)):
+    """데이터베이스 복원 (앱 재시작 필요)"""
+    from backend.import_export import ImportExportManager
+    import tempfile
+
+    # 확장자 검증
+    if not file.filename.endswith('.db'):
+        raise HTTPException(400, "Invalid file type. Only .db files are allowed.")
+
+    # 임시 파일로 저장
+    temp_path = Path(tempfile.gettempdir()) / f"restore_{uuid.uuid4().hex}.db"
+
+    content = await file.read()
+    with open(temp_path, 'wb') as f:
+        f.write(content)
+
+    db = get_db()
+    ie_manager = ImportExportManager(db)
+
+    success, message = ie_manager.import_database(str(temp_path))
+
+    # 임시 파일 삭제
+    if temp_path.exists():
+        temp_path.unlink()
+
+    if not success:
+        raise HTTPException(500, message)
+
+    return {"message": message, "restart_required": True}
+
+
+@app.get("/api/data/rules/export")
+async def export_rules():
+    """분류 룰 내보내기 (JSON)"""
+    from backend.import_export import ImportExportManager
+
+    db = get_db()
+    ie_manager = ImportExportManager(db)
+
+    tags = db.get_all_tags()
+    rules = db.get_all_rules(order_by='priority DESC')
+
+    export_data = {
+        "export_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "version": "1.0",
+        "tags": tags,
+        "rules": rules
+    }
+
+    return export_data
+
+
+@app.post("/api/data/rules/import")
+async def import_rules(
+    file: UploadFile = File(...),
+    merge_mode: bool = Form(True)
+):
+    """분류 룰 가져오기 (JSON)"""
+    from backend.import_export import ImportExportManager
+    import tempfile
+
+    # 확장자 검증
+    if not file.filename.endswith('.json'):
+        raise HTTPException(400, "Invalid file type. Only .json files are allowed.")
+
+    # 임시 파일로 저장
+    temp_path = Path(tempfile.gettempdir()) / f"rules_{uuid.uuid4().hex}.json"
+
+    content = await file.read()
+    with open(temp_path, 'wb') as f:
+        f.write(content)
+
+    db = get_db()
+    ie_manager = ImportExportManager(db)
+
+    # 유효성 검증
+    valid, message, preview = ie_manager.validate_rules_json(str(temp_path))
+
+    if not valid:
+        temp_path.unlink()
+        raise HTTPException(400, message)
+
+    # Import 실행
+    success, result_message, stats = ie_manager.import_rules(str(temp_path), merge_mode)
+
+    # 임시 파일 삭제
+    if temp_path.exists():
+        temp_path.unlink()
+
+    if not success:
+        raise HTTPException(500, result_message)
+
+    return {
+        "message": result_message,
+        "stats": stats,
+        "preview": preview
+    }
+
+
 # === WebSocket Endpoint ===
 
 @app.websocket("/ws/activity")

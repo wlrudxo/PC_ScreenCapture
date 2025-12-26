@@ -10,7 +10,9 @@
   let settings = {
     polling_interval: '2',
     idle_threshold: '300',
-    log_retention_days: '30'
+    log_retention_days: '30',
+    target_daily_hours: '7',
+    target_distraction_ratio: '20'
   };
 
   // Auto start
@@ -45,7 +47,9 @@
       settings = {
         polling_interval: settingsRes.settings?.polling_interval || '2',
         idle_threshold: settingsRes.settings?.idle_threshold || '300',
-        log_retention_days: settingsRes.settings?.log_retention_days || '30'
+        log_retention_days: settingsRes.settings?.log_retention_days || '30',
+        target_daily_hours: settingsRes.settings?.target_daily_hours || '7',
+        target_distraction_ratio: settingsRes.settings?.target_distraction_ratio || '20'
       };
 
       autoStartEnabled = autoStartRes.enabled;
@@ -214,7 +218,16 @@
 
   <!-- General Settings -->
   <div class="bg-bg-card rounded-xl border border-border p-5 space-y-5">
-    <h2 class="text-lg font-semibold text-text-primary">일반 설정</h2>
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold text-text-primary">일반 설정</h2>
+      <button
+        on:click={saveSettings}
+        disabled={saving}
+        class="px-6 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg transition-colors"
+      >
+        {saving ? '저장 중...' : '저장'}
+      </button>
+    </div>
 
     {#if loading}
       <div class="text-center text-text-muted py-4">로딩 중...</div>
@@ -237,7 +250,7 @@
         </label>
       </div>
 
-      <div class="grid grid-cols-2 gap-6">
+      <div class="grid grid-cols-3 gap-4">
         <div>
           <label for="polling" class="block text-sm font-medium text-text-secondary mb-2">
             폴링 간격 (초)
@@ -250,12 +263,11 @@
             max="10"
             class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
           />
-          <p class="text-xs text-text-muted mt-1">활동 감지 주기 (기본값: 2초)</p>
         </div>
 
         <div>
           <label for="idle" class="block text-sm font-medium text-text-secondary mb-2">
-            자리비움 감지 시간 (초)
+            자리비움 감지 (초)
           </label>
           <input
             id="idle"
@@ -265,12 +277,11 @@
             max="600"
             class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
           />
-          <p class="text-xs text-text-muted mt-1">입력 없이 이 시간이 지나면 자리비움 처리</p>
         </div>
 
         <div>
           <label for="retention" class="block text-sm font-medium text-text-secondary mb-2">
-            로그 보관 기간 (일)
+            로그 보관 (일)
           </label>
           <input
             id="retention"
@@ -280,20 +291,60 @@
             max="90"
             class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
           />
-          <p class="text-xs text-text-muted mt-1">activity_logs/recent.log에 포함할 일수</p>
-        </div>
-
-        <div class="flex items-end">
-          <button
-            on:click={saveSettings}
-            disabled={saving}
-            class="px-6 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg transition-colors"
-          >
-            {saving ? '저장 중...' : '설정 저장'}
-          </button>
         </div>
       </div>
     {/if}
+  </div>
+
+  <!-- Goal Settings -->
+  <div class="bg-bg-card rounded-xl border border-border p-5 space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-semibold text-text-primary">목표 설정</h2>
+        <p class="text-sm text-text-muted">분석 탭에서 목표 달성 여부를 판단하는 기준값입니다.</p>
+      </div>
+      <button
+        on:click={saveSettings}
+        disabled={saving}
+        class="px-6 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg transition-colors"
+      >
+        {saving ? '저장 중...' : '저장'}
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-6">
+      <div>
+        <label for="targetHours" class="block text-sm font-medium text-text-secondary mb-2">
+          일일 목표 활동시간 (시간)
+        </label>
+        <input
+          id="targetHours"
+          type="number"
+          bind:value={settings.target_daily_hours}
+          min="1"
+          max="12"
+          step="0.5"
+          class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+        />
+        <p class="text-xs text-text-muted mt-1">이 시간 이상 활동해야 목표 달성</p>
+      </div>
+
+      <div>
+        <label for="targetRatio" class="block text-sm font-medium text-text-secondary mb-2">
+          딴짓 비율 상한 (%)
+        </label>
+        <input
+          id="targetRatio"
+          type="number"
+          bind:value={settings.target_distraction_ratio}
+          min="5"
+          max="50"
+          step="5"
+          class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+        />
+        <p class="text-xs text-text-muted mt-1">딴짓 비율이 이 값 미만이어야 목표 달성</p>
+      </div>
+    </div>
   </div>
 
   <!-- Data Management -->

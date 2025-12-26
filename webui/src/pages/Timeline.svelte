@@ -159,6 +159,10 @@
       <!-- Date Navigation -->
       <div class="flex items-center gap-2">
         <button
+          class="px-3 py-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors text-sm text-text-secondary"
+          on:click={() => $selectedDate = new Date().toISOString().split('T')[0]}
+        >오늘</button>
+        <button
           aria-label="이전 날짜"
           class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors"
           on:click={() => changeDate(-1)}

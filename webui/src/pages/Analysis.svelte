@@ -6,9 +6,13 @@
 
   Chart.register(...registerables);
 
-  // 기간 선택
-  let startDate = '';
-  let endDate = '';
+  // 기간 선택 (기본값: 최근 7일)
+  const today = new Date();
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 6);
+
+  let startDate = weekAgo.toISOString().split('T')[0];
+  let endDate = today.toISOString().split('T')[0];
 
   // 데이터
   let loading = false;
@@ -19,18 +23,26 @@
   let processStats = [];
   let websiteStats = [];
 
-  // 목표 기준 (CLAUDE.md 기반)
-  const TARGET_DAILY_HOURS = 7;
-  const TARGET_DISTRACTION_RATIO = 0.20;
+  // 목표 기준 (설정에서 로드, 기본값 적용)
+  let TARGET_DAILY_HOURS = 7;
+  let TARGET_DISTRACTION_RATIO = 0.20;
   const DISTRACTION_TAG_NAME = '딴짓';
 
   // 차트 인스턴스
   let trendChart;
   let comparisonChart;
 
-  // 초기화: 최근 7일
-  onMount(() => {
-    setQuickRange('7days');
+  // 초기화: 설정 로드 + 최근 7일
+  onMount(async () => {
+    // 설정에서 목표값 로드
+    try {
+      const settingsRes = await api.getSettings();
+      TARGET_DAILY_HOURS = parseFloat(settingsRes.settings?.target_daily_hours) || 7;
+      TARGET_DISTRACTION_RATIO = (parseFloat(settingsRes.settings?.target_distraction_ratio) || 20) / 100;
+    } catch (err) {
+      console.warn('Failed to load goal settings, using defaults');
+    }
+
     initCharts();
 
     return () => {
@@ -181,8 +193,14 @@
   $: totalActivitySeconds = periodStats?.totalSeconds ||
     tagStats.reduce((sum, t) => sum + t.duration, 0);
 
-  $: dailyAverageSeconds = daysCount > 0 ? totalActivitySeconds / daysCount : 0;
+  // 활동이 있는 날만 카운트 (출근 안 한 날 제외)
+  $: activeDays = periodStats?.activeDays ?? countActiveDays();
+  $: dailyAverageSeconds = activeDays > 0 ? totalActivitySeconds / activeDays : 0;
   $: dailyAverageHours = dailyAverageSeconds / 3600;
+
+  function countActiveDays() {
+    return dailyTrend.filter(d => d.tags && d.tags.length > 0).length;
+  }
 
   $: distractionTag = tagStats.find(t => t.name === DISTRACTION_TAG_NAME);
   $: distractionRatio = totalActivitySeconds > 0 && distractionTag
@@ -462,7 +480,7 @@
 
     <!-- Daily Average -->
     <div class="bg-bg-card rounded-xl p-4 border border-border">
-      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">일 평균 활동</div>
+      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">일 평균 활동 ({activeDays}일)</div>
       <div class="text-2xl font-bold {dailyAverageStatus === 'good' ? 'text-green-400' : 'text-yellow-400'}">
         {dailyAverageHours.toFixed(1)}시간
       </div>

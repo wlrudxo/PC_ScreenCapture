@@ -323,8 +323,11 @@ async def get_dashboard_period(
     ]
 
     # === summary: 총 활동 시간, 목표 달성 일수 ===
-    TARGET_DAILY_SECONDS = 7 * 3600  # 7시간
-    TARGET_DISTRACTION_RATIO = 0.20  # 20%
+    # 설정에서 목표값 로드 (기본값: 7시간, 20%)
+    target_hours = float(db.get_setting('target_daily_hours', '7'))
+    target_ratio = float(db.get_setting('target_distraction_ratio', '20')) / 100
+    TARGET_DAILY_SECONDS = target_hours * 3600
+    TARGET_DISTRACTION_RATIO = target_ratio
     DISTRACTION_TAG_NAME = '딴짓'
 
     # 딴짓 태그 ID 찾기
@@ -337,10 +340,15 @@ async def get_dashboard_period(
     total_seconds = sum(s.get('total_seconds', 0) for s in tag_stats_filtered)
     days_count = (end_date_parsed - start_date).days + 1
 
-    # 목표 달성 일수 계산
+    # 목표 달성 일수 및 활동일 계산
     goal_achieved_days = 0
+    active_days = 0
     for day in daily_trend:
         day_total = sum(t['seconds'] for t in day['tags'])
+
+        if day_total > 0:
+            active_days += 1
+
         day_distraction = sum(t['seconds'] for t in day['tags'] if t['tag_name'] == DISTRACTION_TAG_NAME)
 
         if day_total >= TARGET_DAILY_SECONDS:
@@ -358,6 +366,7 @@ async def get_dashboard_period(
         "summary": {
             "totalSeconds": round(total_seconds),
             "daysCount": days_count,
+            "activeDays": active_days,
             "goalAchievedDays": goal_achieved_days
         }
     }

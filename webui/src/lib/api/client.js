@@ -60,6 +60,12 @@ export const api = {
   updateRule: (id, data) => request(`/rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRule: (id) => request(`/rules/${id}`, { method: 'DELETE' }),
 
+  // Reclassify
+  reclassifyUntagged: () => request('/reclassify/untagged', { method: 'POST' }),
+  reclassifyAll: () => request('/reclassify/all', { method: 'POST' }),
+  getUnclassifiedActivities: () => request('/activities/unclassified'),
+  deleteActivities: (ids) => request('/activities/delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+
   // Settings
   getSettings: () => request('/settings'),
   updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),

@@ -10,8 +10,14 @@
   // Modal states
   let showTagModal = false;
   let showRuleModal = false;
+  let showDeleteModal = false;
   let editingTag = null;
   let editingRule = null;
+
+  // Reclassify states
+  let reclassifying = false;
+  let unclassifiedGroups = [];
+  let selectedGroups = new Set();
 
   // Form data
   let tagForm = { name: '', color: '#4CAF50' };
@@ -157,6 +163,91 @@
     }
   }
 
+  // === Reclassify Functions ===
+  async function reclassifyUntagged() {
+    if (!confirm('미분류 항목을 현재 규칙에 따라 재분류하시겠습니까?')) return;
+
+    reclassifying = true;
+    try {
+      const result = await api.reclassifyUntagged();
+      alert(`재분류 완료!\n\n- 재분류됨: ${result.reclassified}개\n- 여전히 미분류: ${result.remaining}개`);
+    } catch (err) {
+      alert('재분류 실패: ' + err.message);
+    } finally {
+      reclassifying = false;
+    }
+  }
+
+  async function reclassifyAll() {
+    if (!confirm('⚠️ 정말 모든 활동을 재분류하시겠습니까?\n\n이 작업은 시간이 오래 걸릴 수 있습니다.')) return;
+
+    reclassifying = true;
+    try {
+      const result = await api.reclassifyAll();
+      alert(`모든 활동 재분류 완료!\n\n- 총 재분류: ${result.reclassified}개`);
+    } catch (err) {
+      alert('재분류 실패: ' + err.message);
+    } finally {
+      reclassifying = false;
+    }
+  }
+
+  async function openDeleteModal() {
+    try {
+      const result = await api.getUnclassifiedActivities();
+      unclassifiedGroups = result.groups || [];
+      selectedGroups = new Set();
+
+      if (unclassifiedGroups.length === 0) {
+        alert('삭제할 미분류 항목이 없습니다.');
+        return;
+      }
+
+      showDeleteModal = true;
+    } catch (err) {
+      alert('미분류 목록 로드 실패: ' + err.message);
+    }
+  }
+
+  function toggleGroupSelection(index) {
+    if (selectedGroups.has(index)) {
+      selectedGroups.delete(index);
+    } else {
+      selectedGroups.add(index);
+    }
+    selectedGroups = selectedGroups; // trigger reactivity
+  }
+
+  function selectAllGroups() {
+    selectedGroups = new Set(unclassifiedGroups.map((_, i) => i));
+  }
+
+  function deselectAllGroups() {
+    selectedGroups = new Set();
+  }
+
+  async function deleteSelectedActivities() {
+    const idsToDelete = [];
+    for (const idx of selectedGroups) {
+      idsToDelete.push(...unclassifiedGroups[idx].ids);
+    }
+
+    if (idsToDelete.length === 0) {
+      alert('삭제할 항목을 선택하세요.');
+      return;
+    }
+
+    if (!confirm(`${idsToDelete.length}개의 활동 기록을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+    try {
+      await api.deleteActivities(idsToDelete);
+      alert(`${idsToDelete.length}개의 활동 기록이 삭제되었습니다.`);
+      showDeleteModal = false;
+    } catch (err) {
+      alert('삭제 실패: ' + err.message);
+    }
+  }
+
   onMount(loadData);
 </script>
 
@@ -165,6 +256,29 @@
     <div>
       <h1 class="text-2xl font-bold text-text-primary">태그 관리</h1>
       <p class="text-sm text-text-secondary mt-1">태그와 분류 규칙을 관리합니다</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button
+        class="px-3 py-2 bg-bg-secondary hover:bg-bg-hover border border-border text-text-primary text-sm rounded-lg transition-colors disabled:opacity-50"
+        on:click={reclassifyUntagged}
+        disabled={reclassifying}
+      >
+        {reclassifying ? '처리중...' : '미분류 재분류'}
+      </button>
+      <button
+        class="px-3 py-2 bg-bg-secondary hover:bg-bg-hover border border-border text-text-primary text-sm rounded-lg transition-colors disabled:opacity-50"
+        on:click={openDeleteModal}
+        disabled={reclassifying}
+      >
+        미분류 삭제
+      </button>
+      <button
+        class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+        on:click={reclassifyAll}
+        disabled={reclassifying}
+      >
+        ⚠ 전체 재분류
+      </button>
     </div>
   </div>
 
@@ -481,6 +595,87 @@
         >
           저장
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Delete Unclassified Modal -->
+{#if showDeleteModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={() => showDeleteModal = false}>
+    <div class="bg-bg-card rounded-xl p-6 w-[800px] max-h-[80vh] border border-border flex flex-col" on:click|stopPropagation>
+      <h3 class="text-lg font-semibold text-text-primary mb-4">
+        미분류 항목 삭제 ({unclassifiedGroups.reduce((sum, g) => sum + g.count, 0)}개)
+      </h3>
+
+      <div class="flex gap-2 mb-4">
+        <button
+          class="px-3 py-1 text-sm bg-bg-secondary hover:bg-bg-hover border border-border rounded transition-colors"
+          on:click={selectAllGroups}
+        >
+          전체 선택
+        </button>
+        <button
+          class="px-3 py-1 text-sm bg-bg-secondary hover:bg-bg-hover border border-border rounded transition-colors"
+          on:click={deselectAllGroups}
+        >
+          전체 해제
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-auto border border-border rounded-lg">
+        <table class="w-full">
+          <thead class="bg-bg-secondary sticky top-0">
+            <tr>
+              <th class="w-12 px-3 py-2 text-left text-xs font-medium text-text-muted">선택</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-text-muted">프로세스</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-text-muted">창 제목</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-text-muted">URL</th>
+              <th class="w-16 px-3 py-2 text-right text-xs font-medium text-text-muted">개수</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {#each unclassifiedGroups as group, index}
+              <tr class="hover:bg-bg-hover transition-colors cursor-pointer" on:click={() => toggleGroupSelection(index)}>
+                <td class="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroups.has(index)}
+                    class="w-4 h-4 rounded border-border bg-bg-tertiary text-accent"
+                  />
+                </td>
+                <td class="px-3 py-2 text-sm text-text-primary">{group.process_name || '-'}</td>
+                <td class="px-3 py-2 text-sm text-text-secondary truncate max-w-[200px]" title={group.window_title}>
+                  {group.window_title || '-'}
+                </td>
+                <td class="px-3 py-2 text-sm text-text-muted truncate max-w-[200px]" title={group.chrome_url}>
+                  {group.chrome_url || '-'}
+                </td>
+                <td class="px-3 py-2 text-sm text-text-primary text-right font-medium">{group.count}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex justify-between items-center mt-4">
+        <span class="text-sm text-text-muted">
+          선택됨: {[...selectedGroups].reduce((sum, idx) => sum + unclassifiedGroups[idx]?.count || 0, 0)}개
+        </span>
+        <div class="flex gap-3">
+          <button
+            class="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+            on:click={() => showDeleteModal = false}
+          >
+            취소
+          </button>
+          <button
+            class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+            on:click={deleteSelectedActivities}
+          >
+            삭제
+          </button>
+        </div>
       </div>
     </div>
   </div>

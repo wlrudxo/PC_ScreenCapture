@@ -426,6 +426,125 @@ async def delete_rule(rule_id: int):
     return {"message": "Rule deleted"}
 
 
+# === Reclassify Endpoints ===
+
+@app.post("/api/reclassify/untagged")
+async def reclassify_untagged():
+    """미분류 항목 재분류"""
+    from backend.rule_engine import RuleEngine
+
+    db = get_db()
+    rule_engine = RuleEngine(db)
+
+    # 미분류 활동 가져오기
+    unclassified = db.get_unclassified_activities()
+    if not unclassified:
+        return {"reclassified": 0, "remaining": 0, "message": "No unclassified activities"}
+
+    # 미분류 태그 ID
+    unclassified_tag = db.get_tag_by_name('미분류')
+    unclassified_tag_id = unclassified_tag['id'] if unclassified_tag else None
+
+    reclassified_count = 0
+    for activity in unclassified:
+        activity_info = {
+            'process_name': activity.get('process_name'),
+            'window_title': activity.get('window_title'),
+            'chrome_url': activity.get('chrome_url'),
+            'chrome_profile': activity.get('chrome_profile')
+        }
+
+        tag_id, rule_id = rule_engine.match(activity_info)
+
+        # 미분류가 아닌 경우만 업데이트
+        if tag_id != unclassified_tag_id:
+            db.update_activity_classification(activity['id'], tag_id, rule_id)
+            reclassified_count += 1
+
+    return {
+        "reclassified": reclassified_count,
+        "remaining": len(unclassified) - reclassified_count,
+        "message": f"Reclassified {reclassified_count} activities"
+    }
+
+
+@app.post("/api/reclassify/all")
+async def reclassify_all():
+    """모든 활동 재분류"""
+    from backend.rule_engine import RuleEngine
+
+    db = get_db()
+    rule_engine = RuleEngine(db)
+
+    # 모든 활동 가져오기
+    all_activities = db.get_all_activities_for_reclassify()
+    if not all_activities:
+        return {"reclassified": 0, "message": "No activities to reclassify"}
+
+    reclassified_count = 0
+    for activity in all_activities:
+        activity_info = {
+            'process_name': activity.get('process_name'),
+            'window_title': activity.get('window_title'),
+            'chrome_url': activity.get('chrome_url'),
+            'chrome_profile': activity.get('chrome_profile')
+        }
+
+        tag_id, rule_id = rule_engine.match(activity_info)
+        db.update_activity_classification(activity['id'], tag_id, rule_id)
+        reclassified_count += 1
+
+    return {
+        "reclassified": reclassified_count,
+        "message": f"Reclassified {reclassified_count} activities"
+    }
+
+
+@app.get("/api/activities/unclassified")
+async def get_unclassified_activities():
+    """미분류 활동 목록 (그룹화)"""
+    db = get_db()
+    activities = db.get_unclassified_activities()
+
+    # 프로세스+제목+URL로 그룹화
+    grouped = {}
+    for act in activities:
+        key = (
+            act.get('process_name') or '',
+            act.get('window_title') or '',
+            act.get('chrome_url') or ''
+        )
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(act['id'])
+
+    # 정렬 (개수 내림차순)
+    result = [
+        {
+            "process_name": k[0],
+            "window_title": k[1],
+            "chrome_url": k[2],
+            "ids": v,
+            "count": len(v)
+        }
+        for k, v in sorted(grouped.items(), key=lambda x: len(x[1]), reverse=True)
+    ]
+
+    return {"groups": result, "total": len(activities)}
+
+
+class ActivityDeleteRequest(BaseModel):
+    ids: List[int]
+
+
+@app.post("/api/activities/delete")
+async def delete_activities(data: ActivityDeleteRequest):
+    """활동 삭제"""
+    db = get_db()
+    db.delete_activities(data.ids)
+    return {"deleted": len(data.ids), "message": f"Deleted {len(data.ids)} activities"}
+
+
 # === Settings Endpoints ===
 
 @app.get("/api/settings")

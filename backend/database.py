@@ -148,6 +148,16 @@ class DatabaseManager:
             self.conn.commit()
         except Exception:
             pass
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN block_start_time TEXT")
+            self.conn.commit()
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN block_end_time TEXT")
+            self.conn.commit()
+        except Exception:
+            pass
 
         # settings 테이블 (전역 설정)
         cursor.execute("""

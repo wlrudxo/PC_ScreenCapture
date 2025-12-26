@@ -55,11 +55,11 @@ class FocusBlocker:
             end = datetime.strptime(end_time, "%H:%M").time()
 
             if start <= end:
-                # 일반 케이스: 10:00 ~ 18:00
-                return start <= now <= end
+                # 일반 케이스: 10:00 ~ 18:00 (18:00 미만)
+                return start <= now < end
             else:
                 # 자정 넘는 케이스: 22:00 ~ 06:00
-                return now >= start or now <= end
+                return now >= start or now < end
         except Exception as e:
             print(f"[FocusBlocker] 시간 파싱 오류: {e}")
             return True  # 파싱 실패 시 차단
@@ -71,7 +71,7 @@ class FocusBlocker:
 
         time_range = self._blocked_tags[tag_id]
         if time_range is None:
-            return True  # 시간대 미설정 = 항상 차단
+            return False  # 시간대 미설정 = 차단 안 함 (설정 잠금 방지)
 
         return self._is_in_time_range(time_range['start_time'], time_range['end_time'])
 

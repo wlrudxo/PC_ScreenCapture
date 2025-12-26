@@ -41,8 +41,8 @@
     const startTime = setting.block_start_time;
     const endTime = setting.block_end_time;
 
-    // 시간 미설정 = 항상 차단 중
-    if (!startTime || !endTime) return true;
+    // 시간 미설정 = 차단 안 함 (설정 잠금 방지)
+    if (!startTime || !endTime) return false;
 
     const now = currentTime;
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -54,11 +54,11 @@
     const endMinutes = endH * 60 + endM;
 
     if (startMinutes <= endMinutes) {
-      // 일반 케이스: 09:00 ~ 18:00
-      return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+      // 일반 케이스: 09:00 ~ 18:00 (18:00 미만)
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
     } else {
       // 자정 넘는 케이스: 22:00 ~ 02:00
-      return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
     }
   }
 

@@ -54,13 +54,8 @@ class ActivityTrackerApp:
         if os.environ.get('DEV_MODE') == '1':
             return 'http://localhost:5173'
 
-        # 프로덕션: 빌드된 dist 폴더
-        dist_path = Path(__file__).parent / 'webui' / 'dist' / 'index.html'
-        if dist_path.exists():
-            return str(dist_path)
-
-        # 폴백: 개발 서버
-        return 'http://localhost:5173'
+        # 프로덕션: FastAPI가 dist를 서빙
+        return f'http://127.0.0.1:{self.api_port}'
 
     def start_api_server(self):
         """FastAPI 서버를 백그라운드 스레드에서 실행"""

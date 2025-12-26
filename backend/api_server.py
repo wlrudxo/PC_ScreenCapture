@@ -7,7 +7,8 @@ from typing import Optional, List, Any
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -795,7 +796,7 @@ async def get_focus_settings():
 def _is_in_block_time(start_time: str, end_time: str) -> bool:
     """현재 시간이 차단 시간대 내인지 확인 (자정 넘김 지원)"""
     if not start_time or not end_time:
-        return True  # 시간 미설정 = 항상 차단 중
+        return False  # 시간 미설정 = 차단 안 함 (설정 잠금 방지)
 
     try:
         now = datetime.now()
@@ -1288,6 +1289,29 @@ async def broadcast_activity_update(activity: dict):
 async def health_check():
     """헬스 체크"""
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
+# === Static Files (Web UI) ===
+
+# dist 폴더 경로 (backend/ 상위의 webui/dist)
+_dist_path = Path(__file__).parent.parent / "webui" / "dist"
+
+if _dist_path.exists():
+    # 정적 파일 서빙 (CSS, JS, assets)
+    app.mount("/assets", StaticFiles(directory=_dist_path / "assets"), name="assets")
+
+    # 루트 및 SPA 폴백
+    @app.get("/")
+    async def serve_root():
+        return HTMLResponse((_dist_path / "index.html").read_text(encoding="utf-8"))
+
+    @app.get("/{path:path}")
+    async def serve_spa(path: str):
+        """SPA 폴백 - 모든 경로를 index.html로"""
+        # API나 WebSocket 경로는 제외
+        if path.startswith("api/") or path.startswith("ws/"):
+            raise HTTPException(404)
+        return HTMLResponse((_dist_path / "index.html").read_text(encoding="utf-8"))
 
 
 # === Run Server (for development) ===

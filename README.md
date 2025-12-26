@@ -61,28 +61,76 @@
 - **Node.js 18+** (웹 UI 빌드용)
 - **Google Chrome** (URL 추적용, 선택)
 
-### 설치
+### 설치 및 실행
 
 ```bash
-# 저장소 클론
+# 1. 저장소 클론
 git clone https://github.com/wlrudxo/PC_ScreenCapture.git
 cd PC_ScreenCapture
 
-# Python 가상환경 생성
-py -3.13 -m venv venv313
-venv313\Scripts\activate
+# 2. Python 가상환경 생성 및 활성화
+python -m venv venv
+venv\Scripts\activate        # Windows CMD
+# 또는
+venv/Scripts/Activate.ps1    # Windows PowerShell
 
-# Python 의존성 설치
+# 3. Python 의존성 설치
 pip install -r requirements.txt
 
-# Web UI 빌드
+# 4. Web UI 빌드
 cd webui
 npm install
 npm run build
 cd ..
 
-# 실행 (더블클릭 또는)
+# 5. 실행
 python main_webview.pyw
+```
+
+### 개발 모드 실행 (선택)
+
+프론트엔드 수정 시 Hot Reload를 사용하려면:
+
+```bash
+# 터미널 1: Vite 개발 서버 실행
+cd webui
+npm run dev
+
+# 터미널 2: 백엔드 실행 (--dev 플래그)
+cd ..
+python main_webview.pyw --dev
+```
+
+개발 모드에서는 `http://localhost:5173`의 Vite 서버를 사용합니다.
+
+### 트러블슈팅
+
+**Q: `npm install` 실패**
+```bash
+# Node.js 버전 확인 (18+ 필요)
+node --version
+
+# npm 캐시 정리 후 재시도
+npm cache clean --force
+cd webui && npm install
+```
+
+**Q: `python main_webview.pyw` 실행 시 모듈 에러**
+```bash
+# 가상환경이 활성화되어 있는지 확인
+venv\Scripts\activate
+
+# 의존성 재설치
+pip install -r requirements.txt
+```
+
+**Q: 빈 화면만 보임**
+```bash
+# dist 폴더가 있는지 확인
+dir webui\dist
+
+# 없으면 빌드 필요
+cd webui && npm run build
 ```
 
 ### Chrome 확장 프로그램 설치 (선택)

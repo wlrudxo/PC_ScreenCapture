@@ -33,6 +33,78 @@ from backend.monitor_engine_thread import MonitorEngineThread
 from backend.rule_engine import RuleEngine
 from backend.config import AppConfig
 from backend.log_generator import ActivityLogGenerator
+from backend.import_export import ImportExportManager
+
+
+class PyWebViewApi:
+    """PyWebView JavaScript API - 네이티브 다이얼로그 제공"""
+
+    def __init__(self, app: 'ActivityTrackerApp'):
+        self.app = app
+
+    def save_backup(self) -> dict:
+        """DB 백업 - 저장 다이얼로그로 경로 선택"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            default_name = f"activity_tracker_backup_{timestamp}.db"
+
+            result = self.app.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=default_name,
+                file_types=('Database Files (*.db)', 'All files (*.*)')
+            )
+
+            if not result:
+                return {"success": False, "message": "취소됨"}
+
+            save_path = result if isinstance(result, str) else result[0]
+
+            ie_manager = ImportExportManager(self.app.db_manager)
+            success = ie_manager.export_database(save_path)
+
+            if success:
+                return {"success": True, "message": f"백업 완료: {save_path}"}
+            else:
+                return {"success": False, "message": "백업 실패"}
+
+        except Exception as e:
+            return {"success": False, "message": f"오류: {str(e)}"}
+
+    def save_rules_export(self) -> dict:
+        """룰 내보내기 - 저장 다이얼로그로 경로 선택"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            default_name = f"rules_export_{timestamp}.json"
+
+            result = self.app.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=default_name,
+                file_types=('JSON Files (*.json)', 'All files (*.*)')
+            )
+
+            if not result:
+                return {"success": False, "message": "취소됨"}
+
+            save_path = result if isinstance(result, str) else result[0]
+
+            ie_manager = ImportExportManager(self.app.db_manager)
+            success = ie_manager.export_rules(save_path)
+
+            if success:
+                tags = self.app.db_manager.get_all_tags()
+                rules = self.app.db_manager.get_all_rules()
+                return {
+                    "success": True,
+                    "message": f"내보내기 완료: {save_path}",
+                    "stats": {"tags": len(tags), "rules": len(rules)}
+                }
+            else:
+                return {"success": False, "message": "내보내기 실패"}
+
+        except Exception as e:
+            return {"success": False, "message": f"오류: {str(e)}"}
 
 
 class ActivityTrackerApp:
@@ -309,6 +381,9 @@ class ActivityTrackerApp:
         tray_thread = threading.Thread(target=self.run_tray, daemon=True)
         tray_thread.start()
 
+        # JS API 인스턴스 생성
+        self.js_api = PyWebViewApi(self)
+
         # PyWebView 창 생성
         self.window = webview.create_window(
             title="Activity Tracker",
@@ -317,7 +392,8 @@ class ActivityTrackerApp:
             height=800,
             min_size=(800, 600),
             resizable=True,
-            confirm_close=True
+            confirm_close=True,
+            js_api=self.js_api
         )
 
         # 창 닫기 이벤트

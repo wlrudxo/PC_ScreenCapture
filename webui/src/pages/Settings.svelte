@@ -101,8 +101,19 @@
   async function handleDbBackup() {
     backupInProgress = true;
     try {
-      await api.backupDatabase();
-      toast.success('백업 파일 다운로드 시작');
+      // PyWebView 네이티브 저장 다이얼로그 사용
+      if (window.pywebview?.api?.save_backup) {
+        const result = await window.pywebview.api.save_backup();
+        if (result.success) {
+          toast.success(result.message);
+        } else if (result.message !== '취소됨') {
+          toast.error(result.message);
+        }
+      } else {
+        // 폴백: 기존 방식 (브라우저)
+        await api.backupDatabase();
+        toast.success('백업 파일 다운로드 시작');
+      }
     } catch (err) {
       toast.error('백업 실패: ' + err.message);
     } finally {
@@ -148,20 +159,29 @@
   async function handleRulesExport() {
     rulesExportInProgress = true;
     try {
-      const data = await api.exportRules();
-
-      // JSON 파일 다운로드
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `rules_export_${timestamp}.json`;
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      window.URL.revokeObjectURL(url);
-
-      toast.success(`룰 내보내기 완료 (태그 ${data.tags?.length || 0}개, 룰 ${data.rules?.length || 0}개)`);
+      // PyWebView 네이티브 저장 다이얼로그 사용
+      if (window.pywebview?.api?.save_rules_export) {
+        const result = await window.pywebview.api.save_rules_export();
+        if (result.success) {
+          const stats = result.stats || {};
+          toast.success(`${result.message} (태그 ${stats.tags || 0}개, 룰 ${stats.rules || 0}개)`);
+        } else if (result.message !== '취소됨') {
+          toast.error(result.message);
+        }
+      } else {
+        // 폴백: 기존 방식 (브라우저)
+        const data = await api.exportRules();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `rules_export_${timestamp}.json`;
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        toast.success(`룰 내보내기 완료 (태그 ${data.tags?.length || 0}개, 룰 ${data.rules?.length || 0}개)`);
+      }
     } catch (err) {
       toast.error('내보내기 실패: ' + err.message);
     } finally {

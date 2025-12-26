@@ -245,7 +245,7 @@
         <table class="w-full table-fixed">
           <thead class="bg-bg-secondary sticky top-0">
             <tr>
-              <th class="w-32 px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">시간</th>
+              <th class="w-44 px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">시간</th>
               <th class="w-20 px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">기간</th>
               <th class="w-24 px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">태그</th>
               <th class="w-36 px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">프로세스</th>

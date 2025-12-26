@@ -28,8 +28,10 @@ async function request(endpoint, options = {}) {
   const response = await fetch(url, config);
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || 'API request failed');
+    const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+    const error = new Error(errorBody.detail || 'API request failed');
+    error.status = response.status;
+    throw error;
   }
 
   return response.json();

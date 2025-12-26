@@ -110,7 +110,7 @@
       await api.updateFocusSettings(setting.id, { [field]: value });
       await loadData();
     } catch (err) {
-      if (err.message.includes('403')) {
+      if (err.status === 403) {
         toast.error('차단 활성 시간대에는 설정을 변경할 수 없습니다.');
       } else {
         toast.error('변경 실패: ' + err.message);

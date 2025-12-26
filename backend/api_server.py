@@ -770,24 +770,6 @@ async def update_settings(data: SettingsUpdate):
     return {"message": "Settings updated"}
 
 
-# === Alert Endpoints ===
-
-@app.get("/api/alerts/sounds")
-async def get_alert_sounds():
-    """알림음 목록 조회"""
-    db = get_db()
-    sounds = db.get_all_alert_sounds()
-    return {"sounds": sounds}
-
-
-@app.get("/api/alerts/images")
-async def get_alert_images():
-    """알림 이미지 목록 조회"""
-    db = get_db()
-    images = db.get_all_alert_images()
-    return {"images": images}
-
-
 # === Focus Endpoints ===
 
 @app.get("/api/focus")
@@ -910,6 +892,8 @@ class TagAlertUpdate(BaseModel):
     alert_message: Optional[str] = None
     alert_cooldown: Optional[int] = None
 
+
+# === Alert Endpoints ===
 
 @app.get("/api/alerts/settings")
 async def get_alert_settings():

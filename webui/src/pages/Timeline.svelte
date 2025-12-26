@@ -50,25 +50,53 @@
   function getTimelineSegments() {
     if (activities.length === 0) return [];
 
-    const segments = [];
     const dayStart = 0;       // 0 AM (midnight)
     const dayEnd = 24 * 60;   // 24:00 (midnight)
     const totalMinutes = dayEnd - dayStart;
+    const MERGE_GAP_THRESHOLD = 10; // 10초 이상 갭이면 병합 안함
 
-    activities.forEach(activity => {
-      if (!activity.start_time) return;
+    // 시간순 정렬
+    const sorted = [...activities]
+      .filter(a => a.start_time)
+      .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
+    // 동일 태그 + 시간 갭 < 10초면 병합
+    const merged = [];
+    for (const activity of sorted) {
+      const tagId = activity.tag_id;
       const start = new Date(activity.start_time);
       const end = activity.end_time ? new Date(activity.end_time) : new Date();
 
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
-      const endMinutes = end.getHours() * 60 + end.getMinutes();
+      const last = merged[merged.length - 1];
+      if (last && last.tag_id === tagId) {
+        // 이전 활동 종료 ~ 현재 활동 시작 간격 계산
+        const gap = (start - last.end) / 1000; // seconds
+        if (gap < MERGE_GAP_THRESHOLD) {
+          // 병합: 끝 시간만 확장
+          last.end = end;
+          continue;
+        }
+      }
 
-      // 범위 내로 클램핑
+      merged.push({
+        tag_id: tagId,
+        start,
+        end,
+        color: activity.tag?.color || '#607D8B',
+        activity
+      });
+    }
+
+    // 세그먼트 변환
+    const segments = [];
+    for (const item of merged) {
+      const startMinutes = item.start.getHours() * 60 + item.start.getMinutes();
+      const endMinutes = item.end.getHours() * 60 + item.end.getMinutes();
+
       const clampedStart = Math.max(dayStart, Math.min(dayEnd, startMinutes));
       const clampedEnd = Math.max(dayStart, Math.min(dayEnd, endMinutes));
 
-      if (clampedEnd <= clampedStart) return;
+      if (clampedEnd <= clampedStart) continue;
 
       const left = ((clampedStart - dayStart) / totalMinutes) * 100;
       const width = ((clampedEnd - clampedStart) / totalMinutes) * 100;
@@ -76,10 +104,10 @@
       segments.push({
         left: `${left}%`,
         width: `${Math.max(width, 0.5)}%`,
-        color: activity.tag?.color || '#607D8B',
-        activity
+        color: item.color,
+        activity: item.activity
       });
-    });
+    }
 
     return segments;
   }

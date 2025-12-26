@@ -102,19 +102,20 @@ class ActivityTrackerApp:
         self.monitor_engine.start()
         print("[Monitor Engine] Started (threading-based)")
 
-        # API 서버에 런타임 엔진 인스턴스 전달 (룰/집중 설정 변경 시 reload 용)
-        set_runtime_engines(self.rule_engine, self.monitor_engine.focus_blocker)
+        # 로그 생성기 초기화
+        self.log_generator = ActivityLogGenerator(self.db_manager)
 
-        # 로그 생성기 초기화 및 실행
+        # API 서버에 런타임 엔진 인스턴스 전달 (룰/집중 설정 변경 시 reload 용)
+        set_runtime_engines(self.rule_engine, self.monitor_engine.focus_blocker, self.log_generator)
+
+        # 로그 생성 (백그라운드)
         self._start_log_generator()
 
     def _start_log_generator(self):
-        """활동 로그 생성기 시작 (백그라운드)"""
+        """활동 로그 생성 (백그라운드)"""
         def generate_logs():
             try:
                 from datetime import date
-                self.log_generator = ActivityLogGenerator(self.db_manager)
-                # 오늘 일간 로그 + 최근 로그 생성
                 self.log_generator.generate_daily_log(date.today())
                 self.log_generator.generate_recent_log()
                 print("[Log Generator] Logs generated successfully")

@@ -6,9 +6,11 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import uuid
+from pathlib import Path
 
 from backend.database import DatabaseManager
 
@@ -672,6 +674,249 @@ async def update_focus_settings(tag_id: int, data: TagUpdate):
         db.update_tag(tag_id, **update_data)
 
     return {"message": "Focus settings updated"}
+
+
+# === Alert/Notification Endpoints ===
+
+class AlertSettingsUpdate(BaseModel):
+    toast_enabled: Optional[bool] = None
+    sound_enabled: Optional[bool] = None
+    sound_mode: Optional[str] = None  # 'single' | 'random'
+    sound_selected: Optional[int] = None
+    image_enabled: Optional[bool] = None
+    image_mode: Optional[str] = None
+    image_selected: Optional[int] = None
+
+
+class TagAlertUpdate(BaseModel):
+    alert_enabled: Optional[bool] = None
+    alert_message: Optional[str] = None
+    alert_cooldown: Optional[int] = None
+
+
+@app.get("/api/alerts/settings")
+async def get_alert_settings():
+    """전역 알림 설정 조회"""
+    db = get_db()
+    return {
+        "toast_enabled": db.get_setting('alert_toast_enabled', '1') == '1',
+        "sound_enabled": db.get_setting('alert_sound_enabled', '0') == '1',
+        "sound_mode": db.get_setting('alert_sound_mode', 'single'),
+        "sound_selected": int(db.get_setting('alert_sound_selected', '0') or 0),
+        "image_enabled": db.get_setting('alert_image_enabled', '0') == '1',
+        "image_mode": db.get_setting('alert_image_mode', 'single'),
+        "image_selected": int(db.get_setting('alert_image_selected', '0') or 0)
+    }
+
+
+@app.put("/api/alerts/settings")
+async def update_alert_settings(data: AlertSettingsUpdate):
+    """전역 알림 설정 수정"""
+    db = get_db()
+    update_data = data.model_dump(exclude_unset=True)
+
+    if 'toast_enabled' in update_data:
+        db.set_setting('alert_toast_enabled', '1' if update_data['toast_enabled'] else '0')
+    if 'sound_enabled' in update_data:
+        db.set_setting('alert_sound_enabled', '1' if update_data['sound_enabled'] else '0')
+    if 'sound_mode' in update_data:
+        db.set_setting('alert_sound_mode', update_data['sound_mode'])
+    if 'sound_selected' in update_data:
+        db.set_setting('alert_sound_selected', str(update_data['sound_selected']))
+    if 'image_enabled' in update_data:
+        db.set_setting('alert_image_enabled', '1' if update_data['image_enabled'] else '0')
+    if 'image_mode' in update_data:
+        db.set_setting('alert_image_mode', update_data['image_mode'])
+    if 'image_selected' in update_data:
+        db.set_setting('alert_image_selected', str(update_data['image_selected']))
+
+    return {"message": "Alert settings updated"}
+
+
+@app.get("/api/alerts/sounds")
+async def get_alert_sounds():
+    """알림음 목록 조회"""
+    db = get_db()
+    sounds = db.get_all_alert_sounds()
+    selected_id = int(db.get_setting('alert_sound_selected', '0') or 0)
+    return {"sounds": sounds, "selected_id": selected_id}
+
+
+@app.post("/api/alerts/sounds/upload")
+async def upload_alert_sound(
+    file: UploadFile = File(...),
+    name: str = Form(...)
+):
+    """알림음 업로드"""
+    from backend.config import AppConfig
+
+    # 확장자 검증
+    allowed_ext = {'.wav', '.mp3', '.ogg', '.flac'}
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in allowed_ext:
+        raise HTTPException(400, f"Unsupported file type. Allowed: {allowed_ext}")
+
+    sounds_dir = AppConfig.get_sounds_dir()
+
+    # WAV가 아니면 변환 필요 (클라이언트에서 처리하거나 ffmpeg 사용)
+    # 일단 그대로 저장
+    output_name = f"{uuid.uuid4().hex}{file_ext}"
+    output_path = sounds_dir / output_name
+
+    content = await file.read()
+    with open(output_path, 'wb') as f:
+        f.write(content)
+
+    db = get_db()
+    sound_id = db.add_alert_sound(name, str(output_path))
+
+    return {"id": sound_id, "name": name, "file_path": str(output_path)}
+
+
+@app.delete("/api/alerts/sounds/{sound_id}")
+async def delete_alert_sound(sound_id: int):
+    """알림음 삭제"""
+    db = get_db()
+    sound = db.get_alert_sound_by_id(sound_id)
+    if not sound:
+        raise HTTPException(404, "Sound not found")
+
+    # 파일도 삭제
+    file_path = Path(sound['file_path'])
+    if file_path.exists():
+        file_path.unlink()
+
+    db.delete_alert_sound(sound_id)
+    return {"message": "Sound deleted"}
+
+
+@app.get("/api/alerts/images")
+async def get_alert_images():
+    """알림 이미지 목록 조회"""
+    db = get_db()
+    images = db.get_all_alert_images()
+    selected_id = int(db.get_setting('alert_image_selected', '0') or 0)
+    return {"images": images, "selected_id": selected_id}
+
+
+@app.post("/api/alerts/images/upload")
+async def upload_alert_image(
+    file: UploadFile = File(...),
+    name: str = Form(...)
+):
+    """알림 이미지 업로드"""
+    from backend.config import AppConfig
+
+    # 확장자 검증
+    allowed_ext = {'.png', '.jpg', '.jpeg'}
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in allowed_ext:
+        raise HTTPException(400, f"Unsupported file type. Allowed: {allowed_ext}")
+
+    images_dir = AppConfig.get_app_dir() / "images"
+    images_dir.mkdir(exist_ok=True)
+
+    output_name = f"{uuid.uuid4().hex}.png"
+    output_path = images_dir / output_name
+
+    content = await file.read()
+
+    # 이미지 처리 (PIL로 2:1 비율 리사이즈)
+    try:
+        from PIL import Image
+        import io
+
+        img = Image.open(io.BytesIO(content))
+
+        # 2:1 비율로 크롭 (364x182 권장, hero image 규격)
+        target_ratio = 2.0
+        current_ratio = img.width / img.height
+
+        if current_ratio > target_ratio:
+            # 너무 넓음 - 좌우 자르기
+            new_width = int(img.height * target_ratio)
+            left = (img.width - new_width) // 2
+            img = img.crop((left, 0, left + new_width, img.height))
+        elif current_ratio < target_ratio:
+            # 너무 높음 - 상하 자르기
+            new_height = int(img.width / target_ratio)
+            top = (img.height - new_height) // 2
+            img = img.crop((0, top, img.width, top + new_height))
+
+        # 리사이즈
+        img = img.resize((364, 182), Image.Resampling.LANCZOS)
+
+        # PNG로 저장
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        img.save(str(output_path), 'PNG')
+
+    except ImportError:
+        # PIL 없으면 그냥 저장
+        with open(output_path, 'wb') as f:
+            f.write(content)
+
+    db = get_db()
+    image_id = db.add_alert_image(name, str(output_path))
+
+    return {"id": image_id, "name": name, "file_path": str(output_path)}
+
+
+@app.delete("/api/alerts/images/{image_id}")
+async def delete_alert_image(image_id: int):
+    """알림 이미지 삭제"""
+    db = get_db()
+    image = db.get_alert_image_by_id(image_id)
+    if not image:
+        raise HTTPException(404, "Image not found")
+
+    # 파일도 삭제
+    file_path = Path(image['file_path'])
+    if file_path.exists():
+        file_path.unlink()
+
+    db.delete_alert_image(image_id)
+    return {"message": "Image deleted"}
+
+
+@app.get("/api/alerts/tags")
+async def get_tag_alert_settings():
+    """태그별 알림 설정 조회"""
+    db = get_db()
+    tags = db.get_all_tags()
+
+    result = []
+    for tag in tags:
+        # 자리비움, 미분류는 알림 대상에서 제외
+        if tag['name'] in ('자리비움', '미분류'):
+            continue
+
+        result.append({
+            "id": tag['id'],
+            "name": tag['name'],
+            "color": tag['color'],
+            "alert_enabled": bool(tag.get('alert_enabled', 0)),
+            "alert_message": tag.get('alert_message') or '',
+            "alert_cooldown": tag.get('alert_cooldown') or 30
+        })
+
+    return {"tags": result}
+
+
+@app.put("/api/alerts/tags/{tag_id}")
+async def update_tag_alert_settings(tag_id: int, data: TagAlertUpdate):
+    """태그별 알림 설정 수정"""
+    db = get_db()
+
+    existing = db.get_tag_by_id(tag_id)
+    if not existing:
+        raise HTTPException(404, "Tag not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    if update_data:
+        db.update_tag(tag_id, **update_data)
+
+    return {"message": "Tag alert settings updated"}
 
 
 # === WebSocket Endpoint ===

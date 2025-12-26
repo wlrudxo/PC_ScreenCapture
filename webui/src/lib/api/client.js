@@ -35,6 +35,26 @@ async function request(endpoint, options = {}) {
   return response.json();
 }
 
+/**
+ * FormData request for file uploads
+ */
+async function uploadRequest(endpoint, formData) {
+  const url = `${API_BASE}${endpoint}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData
+    // Note: Don't set Content-Type header, browser will set it with boundary
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(error.detail || 'Upload failed');
+  }
+
+  return response.json();
+}
+
 export const api = {
   // Dashboard
   getDashboardDaily: (date) => request(`/dashboard/daily?date=${date}`),
@@ -70,10 +90,33 @@ export const api = {
   getSettings: () => request('/settings'),
   updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Alerts
+  // Alerts - Settings
+  getAlertSettings: () => request('/alerts/settings'),
+  updateAlertSettings: (data) => request('/alerts/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Alerts - Sounds
   getAlertSounds: () => request('/alerts/sounds'),
+  uploadAlertSound: (file, name) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    return uploadRequest('/alerts/sounds/upload', formData);
+  },
+  deleteAlertSound: (id) => request(`/alerts/sounds/${id}`, { method: 'DELETE' }),
+
+  // Alerts - Images
   getAlertImages: () => request('/alerts/images'),
-  testAlert: (tagId) => request(`/alerts/test/${tagId}`, { method: 'POST' }),
+  uploadAlertImage: (file, name) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    return uploadRequest('/alerts/images/upload', formData);
+  },
+  deleteAlertImage: (id) => request(`/alerts/images/${id}`, { method: 'DELETE' }),
+
+  // Alerts - Tag Settings
+  getTagAlertSettings: () => request('/alerts/tags'),
+  updateTagAlertSettings: (tagId, data) => request(`/alerts/tags/${tagId}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Focus
   getFocusSettings: () => request('/focus'),

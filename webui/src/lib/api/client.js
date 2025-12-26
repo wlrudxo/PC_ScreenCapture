@@ -164,27 +164,3 @@ export const api = {
     return uploadRequest('/data/rules/import', formData);
   }
 };
-
-/**
- * WebSocket connection for real-time updates
- */
-export function createWebSocket(onMessage) {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${protocol}//${window.location.host}/ws/activity`);
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    onMessage(data);
-  };
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket closed, reconnecting in 3s...');
-    setTimeout(() => createWebSocket(onMessage), 3000);
-  };
-
-  return ws;
-}

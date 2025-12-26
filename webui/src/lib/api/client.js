@@ -1,4 +1,16 @@
-const API_BASE = '/api';
+/**
+ * API 기본 URL 결정
+ * - file:// 프로토콜: PyWebView에서 로드, 절대 경로 사용
+ * - http(s)://: 개발 서버나 프록시 사용, 상대 경로 사용
+ */
+function getApiBase() {
+  if (window.location.protocol === 'file:') {
+    return 'http://127.0.0.1:8000/api';
+  }
+  return '/api';
+}
+
+const API_BASE = getApiBase();
 
 /**
  * Fetch wrapper with error handling

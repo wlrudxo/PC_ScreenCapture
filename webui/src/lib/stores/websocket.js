@@ -16,13 +16,25 @@ let pingInterval = null;
 /**
  * WebSocket 연결 시작
  */
+/**
+ * WebSocket URL 결정
+ * - file:// 프로토콜: PyWebView에서 로드, 절대 경로 사용
+ * - http(s)://: 개발 서버, 현재 호스트 사용
+ */
+function getWsUrl() {
+  if (window.location.protocol === 'file:') {
+    return 'ws://127.0.0.1:8000/ws/activity';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws/activity`;
+}
+
 export function connectWebSocket() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     return;
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws/activity`;
+  const wsUrl = getWsUrl();
 
   console.log('[WebSocket] Connecting to', wsUrl);
 

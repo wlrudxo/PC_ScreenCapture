@@ -879,6 +879,21 @@ async def delete_alert_image(image_id: int):
     return {"message": "Image deleted"}
 
 
+@app.get("/api/alerts/images/file/{image_id}")
+async def get_alert_image_file(image_id: int):
+    """알림 이미지 파일 서빙"""
+    db = get_db()
+    image = db.get_alert_image_by_id(image_id)
+    if not image:
+        raise HTTPException(404, "Image not found")
+
+    file_path = Path(image['file_path'])
+    if not file_path.exists():
+        raise HTTPException(404, "Image file not found")
+
+    return FileResponse(file_path, media_type="image/png")
+
+
 @app.get("/api/alerts/tags")
 async def get_tag_alert_settings():
     """태그별 알림 설정 조회"""

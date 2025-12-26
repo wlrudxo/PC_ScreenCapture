@@ -11,6 +11,9 @@ PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 �
 - 우선순위 기반 자동 태그 분류
 - 대시보드/타임라인 UI (PyQt6)
 - 시스템 트레이 백그라운드 실행
+- 태그별 알림 (토스트, 사운드, 이미지)
+- 집중 모드 (태그별 창 최소화, 시간대 설정)
+- 활동 로그 자동 생성 (daily/monthly/recent.log)
 
 **기술 스택:**
 - Backend: Python, SQLite (WAL), ctypes, psutil, websockets
@@ -25,11 +28,25 @@ PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 �
 
 ---
 
+## 주요 모듈
+
+| 모듈 | 설명 |
+|------|------|
+| `backend/monitor_engine.py` | 메인 모니터링 스레드 (2초 폴링) |
+| `backend/focus_blocker.py` | 집중 모드 - 태그별 창 최소화 |
+| `backend/notification_manager.py` | 토스트/사운드/이미지 알림 |
+| `backend/log_generator.py` | 활동 로그 생성 |
+| `ui/focus_tab.py` | 집중 모드 설정 UI |
+
+---
+
 ## 대화 스타일 가이드
 
 Never compliment me or be affirming excessively (like saying "You're absolutely right!" etc). Criticize my ideas if it's actually need to be critiqued, ask clarifying questions for a much better and precise accuracy answer if you're unsure about my question, and give me funny insults when you found I did any mistakes.
 
+---
+
 ## User Activity Analysis Guide
 
-When check the recent.log file, assume the every tags except for the '딴짓' is kind of works. 
+When check the recent.log file, assume the every tags except for the '딴짓' is kind of works.
 The target performance of user is, 활동시간 7시간, 딴짓 비율 20% 미만.

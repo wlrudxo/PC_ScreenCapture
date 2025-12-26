@@ -1,6 +1,7 @@
 """
 타임라인 탭 - 활동 목록
 """
+import time
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QTableWidget, QTableWidgetItem, QDateEdit,
@@ -148,7 +149,12 @@ class TimelineTab(QWidget):
 
         self._monitor_connected = False
         self._realtime_refresh_scheduled = False
-        self._has_loaded_once = False
+        self._last_full_refresh: float = 0  # 마지막 전체 갱신 시간
+
+        # 주기적 갱신 타이머 (10분)
+        self._periodic_timer = QTimer(self)
+        self._periodic_timer.timeout.connect(self._on_periodic_refresh)
+        self._periodic_timer.start(600_000)  # 10분
 
         # UI 구성
         main_layout = QVBoxLayout()
@@ -279,6 +285,8 @@ class TimelineTab(QWidget):
 
     def load_timeline(self, *, realtime: bool = False):
         """타임라인 데이터 로드"""
+        if not realtime:
+            self._last_full_refresh = time.time()
         try:
             # 선택된 날짜의 활동 조회
             start = datetime.combine(self.selected_date, datetime.min.time())
@@ -415,13 +423,18 @@ class TimelineTab(QWidget):
         super().showEvent(event)
         self._connect_monitor()
         self.reload_tag_filter()
-        if not self._has_loaded_once:
-            self._has_loaded_once = True
+        # 탭 전환 시 30초 경과했으면 갱신
+        if time.time() - self._last_full_refresh > 30:
             QTimer.singleShot(0, self.load_timeline)
 
     def hideEvent(self, event):
         super().hideEvent(event)
         self._disconnect_monitor()
+
+    def _on_periodic_refresh(self):
+        """10분 주기 갱신 (탭 visible + 오늘 날짜일 때만)"""
+        if self.isVisible() and self.selected_date == datetime.now().date():
+            self.load_timeline()
 
     @pyqtSlot(dict)
     def on_new_activity(self, activity_info):

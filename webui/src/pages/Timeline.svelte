@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
-  import { selectedDate, formattedDate, formatDuration, formatTime } from '../lib/stores/app.js';
+  import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate } from '../lib/stores/app.js';
   import { activityUpdated } from '../lib/stores/websocket.js';
 
   let loading = true;
@@ -15,7 +15,7 @@
 
   // WebSocket 실시간 업데이트 구독 (오늘 날짜일 때만)
   $: if ($activityUpdated > 0) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatLocalDate();
     if ($selectedDate === today) {
       loadTimelineData($selectedDate, selectedTag);
     }
@@ -124,7 +124,7 @@
   function changeDate(delta) {
     const current = new Date($selectedDate);
     current.setDate(current.getDate() + delta);
-    $selectedDate = current.toISOString().split('T')[0];
+    $selectedDate = formatLocalDate(current);
   }
 
   function handleTagFilter(event) {
@@ -160,7 +160,7 @@
       <div class="flex items-center gap-2">
         <button
           class="px-3 py-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors text-sm text-text-secondary"
-          on:click={() => $selectedDate = new Date().toISOString().split('T')[0]}
+          on:click={() => $selectedDate = formatLocalDate()}
         >오늘</button>
         <button
           aria-label="이전 날짜"

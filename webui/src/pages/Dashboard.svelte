@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Chart, registerables } from 'chart.js';
   import { api } from '../lib/api/client.js';
-  import { selectedDate, formattedDate, formatDuration, formatTime } from '../lib/stores/app.js';
+  import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate } from '../lib/stores/app.js';
 
   Chart.register(...registerables);
 
@@ -211,7 +211,7 @@
   function changeDate(delta) {
     const current = new Date($selectedDate);
     current.setDate(current.getDate() + delta);
-    $selectedDate = current.toISOString().split('T')[0];
+    $selectedDate = formatLocalDate(current);
   }
 
   onMount(() => {
@@ -238,7 +238,7 @@
     <div class="flex items-center gap-2">
       <button
         class="px-3 py-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors text-sm text-text-secondary"
-        on:click={() => $selectedDate = new Date().toISOString().split('T')[0]}
+        on:click={() => $selectedDate = formatLocalDate()}
       >오늘</button>
       <button
         aria-label="이전 날짜"

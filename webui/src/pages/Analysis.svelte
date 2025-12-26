@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Chart, registerables } from 'chart.js';
   import { api } from '../lib/api/client.js';
-  import { formatDuration } from '../lib/stores/app.js';
+  import { formatDuration, formatLocalDate } from '../lib/stores/app.js';
 
   Chart.register(...registerables);
 
@@ -11,8 +11,8 @@
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 6);
 
-  let startDate = weekAgo.toISOString().split('T')[0];
-  let endDate = today.toISOString().split('T')[0];
+  let startDate = formatLocalDate(weekAgo);
+  let endDate = formatLocalDate(today);
 
   // 데이터
   let loading = false;
@@ -84,8 +84,8 @@
         break;
     }
 
-    startDate = start.toISOString().split('T')[0];
-    endDate = end.toISOString().split('T')[0];
+    startDate = formatLocalDate(start);
+    endDate = formatLocalDate(end);
   }
 
   async function loadPeriodData() {
@@ -152,7 +152,7 @@
       const date = new Date(startDate);
       date.setDate(date.getDate() + i);
       return {
-        date: date.toISOString().split('T')[0],
+        date: formatLocalDate(date),
         tags: [
           { tag_name: '업무', tag_color: '#4CAF50', category: 'work', seconds: 18000 + Math.random() * 7200 },
           { tag_name: '휴식', tag_color: '#FF5722', category: 'non_work', seconds: 3600 + Math.random() * 3600 }

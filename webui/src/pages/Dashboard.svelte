@@ -312,7 +312,7 @@
       <div class="relative h-48">
         <canvas id="tagPieChart"></canvas>
       </div>
-      <div class="mt-4 space-y-2">
+      <div class="mt-4 space-y-2 max-h-40 overflow-auto pr-2">
         {#each tagStats as tag}
           <div class="flex items-center justify-between text-sm">
             <div class="flex items-center gap-2">

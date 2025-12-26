@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { link, location } from 'svelte-spa-router';
   import { connectWebSocket, disconnectWebSocket, wsConnected } from '../stores/websocket.js';
+  import Toast from './Toast.svelte';
 
   onMount(() => {
     connectWebSocket();
@@ -112,3 +113,5 @@
     <slot />
   </main>
 </div>
+
+<Toast />

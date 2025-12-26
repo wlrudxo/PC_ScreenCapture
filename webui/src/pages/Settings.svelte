@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
+  import { toast } from '../lib/stores/toast.js';
 
   let loading = true;
   let error = null;
@@ -65,9 +66,9 @@
     saving = true;
     try {
       await api.updateSettings({ settings });
-      alert('설정이 저장되었습니다.');
+      toast.success('설정이 저장되었습니다.');
     } catch (err) {
-      alert('저장 실패: ' + err.message);
+      toast.error('저장 실패: ' + err.message);
     } finally {
       saving = false;
     }
@@ -79,7 +80,7 @@
       const res = await api.setAutoStart(autoStartEnabled);
       autoStartEnabled = res.enabled;
     } catch (err) {
-      alert('자동 시작 설정 실패: ' + err.message);
+      toast.error('자동 시작 설정 실패: ' + err.message);
       autoStartEnabled = !autoStartEnabled; // 롤백
     } finally {
       autoStartLoading = false;
@@ -91,9 +92,9 @@
     backupInProgress = true;
     try {
       await api.backupDatabase();
-      // 파일 다운로드가 자동으로 시작됨
+      toast.success('백업 파일 다운로드 시작');
     } catch (err) {
-      alert('백업 실패: ' + err.message);
+      toast.error('백업 실패: ' + err.message);
     } finally {
       backupInProgress = false;
     }
@@ -115,9 +116,9 @@
     restoreInProgress = true;
     try {
       const res = await api.restoreDatabase(file);
-      alert(res.message + '\n\n앱을 재시작해주세요.');
+      toast.success(res.message + ' - 앱을 재시작해주세요.', 5000);
     } catch (err) {
-      alert('복원 실패: ' + err.message);
+      toast.error('복원 실패: ' + err.message);
     } finally {
       restoreInProgress = false;
       event.target.value = '';
@@ -141,9 +142,9 @@
       a.click();
       window.URL.revokeObjectURL(url);
 
-      alert(`룰 내보내기 완료\n\n태그: ${data.tags?.length || 0}개\n룰: ${data.rules?.length || 0}개`);
+      toast.success(`룰 내보내기 완료 (태그 ${data.tags?.length || 0}개, 룰 ${data.rules?.length || 0}개)`);
     } catch (err) {
-      alert('내보내기 실패: ' + err.message);
+      toast.error('내보내기 실패: ' + err.message);
     } finally {
       rulesExportInProgress = false;
     }
@@ -169,11 +170,11 @@
     rulesImportInProgress = true;
     try {
       const res = await api.importRules(rulesImportFile, rulesImportMergeMode);
-      alert(res.message);
+      toast.success(res.message);
       showRulesImportModal = false;
       rulesImportFile = null;
     } catch (err) {
-      alert('가져오기 실패: ' + err.message);
+      toast.error('가져오기 실패: ' + err.message);
     } finally {
       rulesImportInProgress = false;
     }

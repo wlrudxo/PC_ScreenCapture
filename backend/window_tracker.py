@@ -46,6 +46,7 @@ class WindowTracker:
             chrome_profile = self._detect_chrome_profile(process)
 
             return {
+                'hwnd': hwnd,
                 'window_title': window_title,
                 'process_name': process_name,
                 'process_path': process_path,

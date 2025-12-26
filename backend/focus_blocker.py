@@ -41,16 +41,18 @@ class FocusBlocker:
         """해당 태그가 차단 대상인지 확인"""
         return tag_id in self._blocked_tags
 
-    def minimize_foreground_window(self) -> bool:
+    def minimize_window(self, hwnd: int) -> bool:
         """
-        현재 포그라운드 창 최소화
+        지정된 창 최소화
+
+        Args:
+            hwnd: 최소화할 창 핸들
 
         Returns:
             True: 최소화 성공
             False: 실패
         """
         try:
-            hwnd = windll.user32.GetForegroundWindow()
             if hwnd:
                 result = windll.user32.ShowWindow(hwnd, self.SW_MINIMIZE)
                 print(f"[FocusBlocker] 창 최소화 실행 (hwnd={hwnd}, result={result})")
@@ -60,18 +62,19 @@ class FocusBlocker:
             print(f"[FocusBlocker] 창 최소화 오류: {e}")
             return False
 
-    def check_and_block(self, tag_id: int) -> bool:
+    def check_and_block(self, tag_id: int, hwnd: int) -> bool:
         """
         태그 확인 후 차단 대상이면 창 최소화
 
         Args:
             tag_id: 현재 활동의 태그 ID
+            hwnd: 감지 시점의 창 핸들
 
         Returns:
             True: 차단 실행됨
             False: 차단 대상 아님
         """
         if self.is_blocked(tag_id):
-            self.minimize_foreground_window()
+            self.minimize_window(hwnd)
             return True
         return False

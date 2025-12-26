@@ -56,6 +56,7 @@ class MonitorEngine(QThread):
         # 상태 변수
         self.current_activity_id: Optional[int] = None
         self.current_tag_id: Optional[int] = None  # 현재 활동의 태그 ID (알림용)
+        self.current_hwnd: Optional[int] = None  # 현재 활동의 창 핸들 (차단용)
         self.last_activity_info: Optional[Dict[str, Any]] = None
         self.running = False
         self._last_played_sound_id: Optional[int] = None  # 직전 재생된 사운드 ID
@@ -83,7 +84,10 @@ class MonitorEngine(QThread):
                     # 동일 활동이어도 알림 체크 (쿨다운이 중복 알림 방지)
                     self._check_tag_alert(self.current_tag_id)
                     # 차단 체크 (사용자가 최소화된 창을 다시 열었을 경우)
-                    self.focus_blocker.check_and_block(self.current_tag_id)
+                    # 현재 hwnd를 사용 (activity_info에서 방금 가져온 것)
+                    hwnd = activity_info.get('hwnd')
+                    if hwnd:
+                        self.focus_blocker.check_and_block(self.current_tag_id, hwnd)
 
                 time.sleep(2)
 
@@ -131,6 +135,7 @@ class MonitorEngine(QThread):
                 'window_title': 'Screen Locked',
                 'chrome_url': None,
                 'chrome_profile': None,
+                'hwnd': None,
             }
 
         # 2. 유휴(idle) 상태 체크
@@ -141,6 +146,7 @@ class MonitorEngine(QThread):
                 'window_title': 'Idle',  # 고정값 (시간 정보 제거)
                 'chrome_url': None,
                 'chrome_profile': None,
+                'hwnd': None,
             }
 
         # 3. 일반 활동
@@ -152,6 +158,7 @@ class MonitorEngine(QThread):
                 'window_title': 'Unknown',
                 'chrome_url': None,
                 'chrome_profile': None,
+                'hwnd': None,
             }
 
         # Chrome URL 데이터 가져오기 (Chrome 프로세스일 때만)
@@ -179,6 +186,7 @@ class MonitorEngine(QThread):
             'chrome_url': chrome_data.get('url') if chrome_data else None,
             'chrome_profile': chrome_data.get('profile') if chrome_data else None,
             'process_path': window_info.get('process_path'),
+            'hwnd': window_info.get('hwnd'),
         }
 
     def _is_activity_changed(self, new_info: Dict[str, Any]) -> bool:
@@ -241,7 +249,9 @@ class MonitorEngine(QThread):
             self._check_tag_alert(tag_id)
 
             # 태그 차단 체크 (딴짓 태그면 창 최소화)
-            self.focus_blocker.check_and_block(tag_id)
+            hwnd = info.get('hwnd')
+            if hwnd:
+                self.focus_blocker.check_and_block(tag_id, hwnd)
 
         except Exception as e:
             print(f"[MonitorEngine] 활동 저장 오류: {e}")

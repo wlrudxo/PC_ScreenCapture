@@ -7,6 +7,7 @@ pyqtSignal 대신 콜백 함수 방식으로 이벤트 전달.
 import time
 import random
 import threading
+from datetime import date, timedelta
 from typing import Dict, Any, Optional, Callable
 
 from backend.window_tracker import WindowTracker
@@ -36,7 +37,8 @@ class MonitorEngineThread(threading.Thread):
         db_manager,
         rule_engine,
         on_activity_detected: Optional[Callable[[dict], None]] = None,
-        on_toast_requested: Optional[Callable[[int, str, int], None]] = None
+        on_toast_requested: Optional[Callable[[int, str, int], None]] = None,
+        log_generator=None
     ):
         """
         모니터링 엔진 초기화
@@ -46,15 +48,22 @@ class MonitorEngineThread(threading.Thread):
             rule_engine: RuleEngine 인스턴스
             on_activity_detected: 활동 감지 시 호출될 콜백 (activity_info)
             on_toast_requested: 토스트 알림 요청 시 호출될 콜백 (tag_id, message, cooldown)
+            log_generator: ActivityLogGenerator 인스턴스 (날짜 변경 시 로그 생성용)
         """
         super().__init__(daemon=True)
 
         self.db_manager = db_manager
         self.rule_engine = rule_engine
+        self.log_generator = log_generator
 
         # 콜백 함수
         self._on_activity_detected = on_activity_detected
         self._on_toast_requested = on_toast_requested
+
+        # 날짜 변경 감지용
+        self._current_date = date.today()
+        self._last_date_check_time = 0.0
+        self._DATE_CHECK_INTERVAL = 60  # 1분마다 체크
 
         # 모듈 초기화
         self.window_tracker = WindowTracker()
@@ -107,6 +116,9 @@ class MonitorEngineThread(threading.Thread):
                 # 설정값 조회 (매 루프마다 최신값 반영)
                 polling_interval = self._get_polling_interval()
 
+                # 날짜 변경 체크 (1분마다)
+                self._check_date_change()
+
                 # 현재 활동 정보 수집
                 activity_info = self.collect_activity_info()
 
@@ -132,6 +144,32 @@ class MonitorEngineThread(threading.Thread):
 
         self._running = False
         print("[MonitorEngine] 루프 종료")
+
+    def _check_date_change(self):
+        """날짜 변경 감지 및 로그 생성"""
+        now = time.time()
+        if now - self._last_date_check_time < self._DATE_CHECK_INTERVAL:
+            return
+
+        self._last_date_check_time = now
+        today = date.today()
+
+        if today != self._current_date:
+            yesterday = self._current_date
+            self._current_date = today
+            print(f"[MonitorEngine] 날짜 변경 감지: {yesterday} → {today}")
+
+            # 어제 로그 생성 (백그라운드)
+            if self.log_generator:
+                def generate_logs():
+                    try:
+                        self.log_generator.save_daily_log(yesterday)
+                        self.log_generator.generate_recent_log()
+                        print(f"[MonitorEngine] {yesterday} 로그 생성 완료")
+                    except Exception as e:
+                        print(f"[MonitorEngine] 로그 생성 오류: {e}")
+
+                threading.Thread(target=generate_logs, daemon=True).start()
 
     def stop(self, timeout: float = 5.0):
         """

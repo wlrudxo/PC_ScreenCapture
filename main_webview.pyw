@@ -338,8 +338,46 @@ def is_port_in_use(port: int) -> bool:
             return True
 
 
+def ensure_single_instance() -> bool:
+    """중복 실행 방지 (Windows mutex)"""
+    mutex_name = "Global\\ActivityTrackerV2_SingleInstance"
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    if not handle:
+        return True  # 실패 시 앱 실행 허용
+
+    ERROR_ALREADY_EXISTS = 183
+    if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        return False
+
+    return True
+
+
+def activate_existing_window() -> bool:
+    """이미 실행 중인 창을 활성화"""
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, "Activity Tracker")
+        if not hwnd:
+            return False
+
+        SW_SHOW = 5
+        SW_RESTORE = 9
+        user32.ShowWindow(hwnd, SW_SHOW)
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
 def main():
     """메인 함수"""
+    # 중복 실행 방지 (포트 열기 전 mutex 체크)
+    if not ensure_single_instance():
+        activate_existing_window()
+        print("[App] Already running (mutex exists). Exiting.")
+        sys.exit(0)
+
     # 중복 실행 방지 (포트 8000 체크)
     if is_port_in_use(8000):
         print("[App] Already running (port 8000 in use). Exiting.")

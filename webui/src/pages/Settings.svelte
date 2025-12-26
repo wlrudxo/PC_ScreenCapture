@@ -3,8 +3,11 @@
   import { api } from '../lib/api/client.js';
   import { toast } from '../lib/stores/toast.js';
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
+  import HelpModal from '../lib/components/HelpModal.svelte';
+  import HelpButton from '../lib/components/HelpButton.svelte';
 
   let loading = true;
+  let showHelp = false;
   let error = null;
   let saving = false;
 
@@ -274,7 +277,10 @@
 
 <div class="p-6 space-y-6">
   <div>
-    <h1 class="text-2xl font-bold text-text-primary">설정</h1>
+    <div class="flex items-center gap-2">
+      <h1 class="text-2xl font-bold text-text-primary">설정</h1>
+      <HelpButton on:click={() => showHelp = true} />
+    </div>
     <p class="text-sm text-text-secondary mt-1">애플리케이션 설정을 관리합니다</p>
   </div>
 
@@ -627,3 +633,42 @@
     <p class="text-text-muted">트레이 아이콘과 모든 모니터링이 중지됩니다.</p>
   {/if}
 </ConfirmModal>
+
+<!-- Help Modal -->
+<HelpModal show={showHelp} title="설정 도움말" on:close={() => showHelp = false}>
+  <div class="space-y-4">
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">일반 설정</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">폴링 간격</strong> - 활성 창을 감지하는 주기 (1~10초)</li>
+        <li><strong class="text-text-primary">자리비움 감지</strong> - 입력이 없으면 자리비움으로 판단하는 시간</li>
+        <li><strong class="text-text-primary">로그 보관</strong> - 활동 로그 파일 보관 기간</li>
+        <li><strong class="text-text-primary">자동 실행</strong> - Windows 시작 시 앱 자동 실행</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">목표 설정</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">일일 목표 활동시간</strong> - 분석 탭에서 목표 달성 판단 기준</li>
+        <li><strong class="text-text-primary">비업무 비율 상한</strong> - '딴짓' 태그 비율이 이 값 미만이어야 목표 달성</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">데이터 관리</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">전체 백업</strong> - DB 파일 전체 백업 (활동 기록 포함)</li>
+        <li><strong class="text-text-primary">백업 복원</strong> - 백업 파일로 DB 복원 (앱 재시작 필요)</li>
+        <li><strong class="text-text-primary">룰 내보내기</strong> - 태그와 분류 룰만 JSON으로 내보내기</li>
+        <li><strong class="text-text-primary">룰 가져오기</strong> - 다른 PC에서 만든 룰 가져오기 (병합/교체 선택)</li>
+      </ul>
+    </div>
+
+    <div class="pt-2 border-t border-border">
+      <p class="text-text-muted text-xs">
+        팁: 룰 내보내기/가져오기로 여러 PC에서 동일한 분류 설정을 사용할 수 있습니다.
+      </p>
+    </div>
+  </div>
+</HelpModal>

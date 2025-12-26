@@ -15,8 +15,11 @@
   import { api } from '../lib/api/client.js';
   import { toast } from '../lib/stores/toast.js';
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
+  import HelpModal from '../lib/components/HelpModal.svelte';
+  import HelpButton from '../lib/components/HelpButton.svelte';
 
   let loading = true;
+  let showHelp = false;
   let error = null;
   let focusSettings = [];
   let currentTime = new Date();
@@ -133,7 +136,10 @@
 
 <div class="p-6 space-y-6">
   <div>
-    <h1 class="text-2xl font-bold text-text-primary">집중 모드</h1>
+    <div class="flex items-center gap-2">
+      <h1 class="text-2xl font-bold text-text-primary">집중 모드</h1>
+      <HelpButton on:click={() => showHelp = true} />
+    </div>
     <p class="text-sm text-text-secondary mt-1">특정 태그의 활동이 감지되면 해당 창을 자동으로 최소화합니다</p>
   </div>
 
@@ -273,3 +279,40 @@
   <p class="text-yellow-400 font-medium">⚠️ 주의: 활성화 시간대({pendingSetting?.block_start_time || '09:00'} ~ {pendingSetting?.block_end_time || '18:00'}) 동안에는 차단을 해제할 수 없습니다.</p>
   <p>이 기간 동안 해당 태그의 창은 자동으로 최소화되며, 설정 변경이 불가능합니다.</p>
 </ConfirmModal>
+
+<!-- Help Modal -->
+<HelpModal show={showHelp} title="집중 모드 도움말" on:close={() => showHelp = false}>
+  <div class="space-y-4">
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">집중 모드란?</h4>
+      <p class="text-text-secondary">
+        특정 태그의 활동이 감지되면 해당 창을 자동으로 최소화하여 집중을 방해하는 앱 사용을 억제합니다.
+        지정된 시간대에만 동작하며, 그 시간 동안에는 설정 변경이 잠깁니다.
+      </p>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">설정 항목</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">차단 활성화</strong> - 해당 태그 집중 모드 켜기/끄기</li>
+        <li><strong class="text-text-primary">시작/종료 시간</strong> - 차단이 작동하는 시간대</li>
+        <li><strong class="text-text-primary">상태 표시</strong> - 현재 차단 중인지 표시</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">주의사항</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li class="text-yellow-400">활성 시간대에는 설정 변경 불가 (자기 통제)</li>
+        <li>앱을 종료하면 집중 모드가 해제됨</li>
+        <li>자정을 넘는 시간대도 설정 가능 (예: 22:00~02:00)</li>
+      </ul>
+    </div>
+
+    <div class="pt-2 border-t border-border">
+      <p class="text-text-muted text-xs">
+        팁: '딴짓' 같은 비업무 태그에 집중 모드를 설정하면 업무 시간에 SNS, 게임 등의 사용을 억제할 수 있습니다.
+      </p>
+    </div>
+  </div>
+</HelpModal>

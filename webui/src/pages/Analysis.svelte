@@ -3,8 +3,12 @@
   import { Chart, registerables } from 'chart.js';
   import { api } from '../lib/api/client.js';
   import { formatDuration, formatLocalDate } from '../lib/stores/app.js';
+  import HelpModal from '../lib/components/HelpModal.svelte';
+  import HelpButton from '../lib/components/HelpButton.svelte';
 
   Chart.register(...registerables);
+
+  let showHelp = false;
 
   // 기간 선택 (기본값: 최근 7일)
   const today = new Date();
@@ -407,7 +411,10 @@
   <!-- Header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-bold text-text-primary">분석</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold text-text-primary">분석</h1>
+        <HelpButton on:click={() => showHelp = true} />
+      </div>
       <p class="text-sm text-text-secondary mt-1">{formatDateRange()} ({daysCount}일)</p>
     </div>
   </div>
@@ -645,3 +652,39 @@
     </div>
   </div>
 </div>
+
+<!-- Help Modal -->
+<HelpModal show={showHelp} title="분석 도움말" on:close={() => showHelp = false}>
+  <div class="space-y-4">
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">분석 탭이란?</h4>
+      <p class="text-text-secondary">
+        선택한 기간의 활동 데이터를 분석하고 목표 달성 여부를 판단합니다.
+        일별 트렌드, 태그별 통계, 프로세스/웹사이트별 사용 시간을 확인할 수 있습니다.
+      </p>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">목표 달성 기준</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-green-400">달성</strong> - 활동시간 ≥ 목표시간 AND 비업무 비율 &lt; 상한</li>
+        <li><strong class="text-red-400">미달</strong> - 조건 중 하나라도 만족하지 못함</li>
+        <li>목표값은 설정 탭에서 변경 가능</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">차트 설명</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">일별 트렌드</strong> - 업무/비업무 시간 추이 (막대: 업무, 선: 비업무)</li>
+        <li><strong class="text-text-primary">태그 비교</strong> - 업무 vs 비업무 태그 비율</li>
+      </ul>
+    </div>
+
+    <div class="pt-2 border-t border-border">
+      <p class="text-text-muted text-xs">
+        팁: 빠른 기간 선택 버튼으로 7일/30일/이번 달/지난 달을 빠르게 조회할 수 있습니다.
+      </p>
+    </div>
+  </div>
+</HelpModal>

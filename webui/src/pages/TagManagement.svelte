@@ -3,8 +3,11 @@
   import { api } from '../lib/api/client.js';
   import { toast } from '../lib/stores/toast.js';
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
+  import HelpModal from '../lib/components/HelpModal.svelte';
+  import HelpButton from '../lib/components/HelpButton.svelte';
 
   let loading = true;
+  let showHelp = false;
   let error = null;
   let tags = [];
   let rules = [];
@@ -316,7 +319,10 @@
 <div class="p-6 space-y-6">
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-bold text-text-primary">태그 관리</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold text-text-primary">태그 관리</h1>
+        <HelpButton on:click={() => showHelp = true} />
+      </div>
       <p class="text-sm text-text-secondary mt-1">태그와 분류 규칙을 관리합니다</p>
     </div>
     <div class="flex items-center gap-2">
@@ -821,3 +827,40 @@
   <p><strong class="text-text-primary">{pendingDeleteCount}개</strong>의 활동 기록을 삭제하시겠습니까?</p>
   <p class="text-yellow-400">이 작업은 되돌릴 수 없습니다.</p>
 </ConfirmModal>
+
+<!-- Help Modal -->
+<HelpModal show={showHelp} title="태그 관리 도움말" on:close={() => showHelp = false}>
+  <div class="space-y-4">
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">태그란?</h4>
+      <p class="text-text-secondary">
+        활동을 분류하는 라벨입니다. 각 태그는 카테고리(업무/비업무/기타)를 가지며,
+        통계와 분석에서 이 카테고리를 기준으로 집계됩니다.
+      </p>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">분류 규칙(룰)</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">우선순위</strong> - 숫자가 높을수록 먼저 매칭 (100이 1보다 우선)</li>
+        <li><strong class="text-text-primary">패턴</strong> - 와일드카드(*) 사용 가능 (예: *youtube*)</li>
+        <li><strong class="text-text-primary">Chrome 프로필</strong> - 특정 프로필에서만 매칭</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="font-semibold text-text-primary mb-2">버튼 설명</h4>
+      <ul class="list-disc list-inside space-y-1 text-text-secondary">
+        <li><strong class="text-text-primary">미분류 재분류</strong> - 태그 없는 활동에 룰 다시 적용</li>
+        <li><strong class="text-text-primary">전체 재분류</strong> - 모든 활동에 룰 다시 적용 (시간 소요)</li>
+        <li><strong class="text-text-primary">미분류 삭제</strong> - 태그 없는 활동 일괄 삭제</li>
+      </ul>
+    </div>
+
+    <div class="pt-2 border-t border-border">
+      <p class="text-text-muted text-xs">
+        팁: 룰 추가 후 "미분류 재분류"를 누르면 기존 활동에도 새 룰이 적용됩니다.
+      </p>
+    </div>
+  </div>
+</HelpModal>

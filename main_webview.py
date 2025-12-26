@@ -23,7 +23,7 @@ import pystray
 from PIL import Image
 import uvicorn
 
-from backend.api_server import app as fastapi_app, ws_manager
+from backend.api_server import app as fastapi_app, ws_manager, set_runtime_engines
 from backend.database import DatabaseManager
 from backend.monitor_engine_thread import MonitorEngineThread
 from backend.rule_engine import RuleEngine
@@ -102,6 +102,9 @@ class ActivityTrackerApp:
         # 모니터링 시작
         self.monitor_engine.start()
         print("[Monitor Engine] Started (threading-based)")
+
+        # API 서버에 런타임 엔진 인스턴스 전달 (룰/집중 설정 변경 시 reload 용)
+        set_runtime_engines(self.rule_engine, self.monitor_engine.focus_blocker)
 
         # 로그 생성기 초기화 및 실행
         self._start_log_generator()

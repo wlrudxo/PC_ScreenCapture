@@ -16,6 +16,33 @@ from pathlib import Path
 from backend.database import DatabaseManager
 
 
+# === Runtime Engine References ===
+# main_webview.py에서 설정, 룰/집중 설정 변경 시 reload 호출용
+_rule_engine = None
+_focus_blocker = None
+
+
+def set_runtime_engines(rule_engine, focus_blocker):
+    """런타임 엔진 인스턴스 설정 (main_webview.py에서 호출)"""
+    global _rule_engine, _focus_blocker
+    _rule_engine = rule_engine
+    _focus_blocker = focus_blocker
+
+
+def _reload_rule_engine():
+    """룰 엔진 새로고침"""
+    if _rule_engine:
+        _rule_engine.reload_rules()
+        print("[API] RuleEngine 새로고침 완료")
+
+
+def _reload_focus_blocker():
+    """집중 모드 새로고침"""
+    if _focus_blocker:
+        _focus_blocker.reload()
+        print("[API] FocusBlocker 새로고침 완료")
+
+
 # === Pydantic Models ===
 
 class TagCreate(BaseModel):
@@ -350,6 +377,7 @@ async def create_tag(tag: TagCreate):
     """태그 생성"""
     db = get_db()
     tag_id = db.create_tag(tag.name, tag.color)
+    _reload_rule_engine()
     return {"id": tag_id, "message": "Tag created"}
 
 
@@ -365,6 +393,7 @@ async def update_tag(tag_id: int, tag: TagUpdate):
     update_data = tag.model_dump(exclude_unset=True)
     if update_data:
         db.update_tag(tag_id, **update_data)
+        _reload_rule_engine()
 
     return {"message": "Tag updated"}
 
@@ -379,6 +408,7 @@ async def delete_tag(tag_id: int):
         raise HTTPException(404, "Tag not found")
 
     db.delete_tag(tag_id)
+    _reload_rule_engine()
     return {"message": "Tag deleted"}
 
 
@@ -397,6 +427,7 @@ async def create_rule(rule: RuleCreate):
     """룰 생성"""
     db = get_db()
     rule_id = db.create_rule(**rule.model_dump())
+    _reload_rule_engine()
     return {"id": rule_id, "message": "Rule created"}
 
 
@@ -412,6 +443,7 @@ async def update_rule(rule_id: int, rule: RuleUpdate):
     update_data = rule.model_dump(exclude_unset=True)
     if update_data:
         db.update_rule(rule_id, **update_data)
+        _reload_rule_engine()
 
     return {"message": "Rule updated"}
 
@@ -426,6 +458,7 @@ async def delete_rule(rule_id: int):
         raise HTTPException(404, "Rule not found")
 
     db.delete_rule(rule_id)
+    _reload_rule_engine()
     return {"message": "Rule deleted"}
 
 
@@ -673,6 +706,7 @@ async def update_focus_settings(tag_id: int, data: TagUpdate):
     update_data = data.model_dump(exclude_unset=True)
     if update_data:
         db.update_tag(tag_id, **update_data)
+        _reload_focus_blocker()
 
     return {"message": "Focus settings updated"}
 
@@ -1082,6 +1116,8 @@ async def import_rules(
 
     if not success:
         raise HTTPException(500, result_message)
+
+    _reload_rule_engine()
 
     return {
         "message": result_message,

@@ -147,8 +147,15 @@ async def get_dashboard_daily(date: str = Query(..., description="YYYY-MM-DD for
     # 활동 목록 (요약용)
     activities = db.get_activities(start, end)
 
-    # 총 활동 시간 계산
-    total_seconds = sum(s.get('total_seconds', 0) or 0 for s in tag_stats)
+    # 총 활동 시간 계산 (자리비움 제외)
+    total_seconds = sum(
+        s.get('total_seconds', 0) or 0
+        for s in tag_stats
+        if s.get('tag_name') != '자리비움'
+    )
+
+    # 태그 통계에서 자리비움 제외
+    tag_stats = [s for s in tag_stats if s.get('tag_name') != '자리비움']
 
     # 첫/마지막 활동 시간
     first_activity = None
@@ -195,6 +202,8 @@ async def get_dashboard_period(
     db = get_db()
 
     tag_stats = db.get_stats_by_tag(start_date, end_date)
+    # 자리비움 제외
+    tag_stats = [s for s in tag_stats if s.get('tag_name') != '자리비움']
     process_stats = db.get_stats_by_process(start_date, end_date, limit=10)
 
     return {
@@ -268,9 +277,13 @@ async def get_dashboard_hourly(date: str = Query(..., description="YYYY-MM-DD fo
         }
         for tag_id, seconds in hourly_data[hour].items():
             tag = tags.get(tag_id, {})
+            tag_name = tag.get('name', 'Unknown')
+            # 자리비움 제외
+            if tag_name == '자리비움':
+                continue
             hour_stats["tags"].append({
                 "tag_id": tag_id,
-                "tag_name": tag.get('name', 'Unknown'),
+                "tag_name": tag_name,
                 "tag_color": tag.get('color', '#888888'),
                 "seconds": int(seconds),
                 "minutes": round(seconds / 60, 1)

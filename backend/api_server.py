@@ -2,6 +2,12 @@
 FastAPI 서버 - 웹 UI용 REST + WebSocket API
 """
 import asyncio
+import mimetypes
+
+# Windows MIME type 문제 해결
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
 from datetime import datetime, timedelta
 from typing import Optional, List, Any
 from contextlib import asynccontextmanager

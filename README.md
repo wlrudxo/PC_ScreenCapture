@@ -81,8 +81,8 @@ npm install
 npm run build
 cd ..
 
-# 실행
-python main_webview.py
+# 실행 (더블클릭 또는)
+python main_webview.pyw
 ```
 
 ### Chrome 확장 프로그램 설치 (선택)
@@ -103,7 +103,7 @@ Chrome URL을 추적하려면 확장 프로그램을 설치해야 합니다:
 
 ```
 PC_ScreenCapture_V2/
-├── main_webview.py              # 앱 진입점 (PyWebView + pystray)
+├── main_webview.pyw             # 앱 진입점 (PyWebView + pystray, 콘솔 없음)
 ├── requirements.txt             # Python 의존성
 ├── ARCHITECTURE.md              # 상세 아키텍처 문서
 ├── CLAUDE.md                    # 프로젝트 컨텍스트

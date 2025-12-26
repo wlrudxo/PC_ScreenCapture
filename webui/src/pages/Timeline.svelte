@@ -51,8 +51,8 @@
     if (activities.length === 0) return [];
 
     const segments = [];
-    const dayStart = 7 * 60;  // 7 AM
-    const dayEnd = 22 * 60;   // 10 PM
+    const dayStart = 0;       // 0 AM (midnight)
+    const dayEnd = 24 * 60;   // 24:00 (midnight)
     const totalMinutes = dayEnd - dayStart;
 
     activities.forEach(activity => {
@@ -161,7 +161,7 @@
 
     <!-- Time labels -->
     <div class="flex justify-between text-xs text-text-muted mb-2 px-1">
-      {#each [7, 9, 11, 13, 15, 17, 19, 21] as hour}
+      {#each [0, 3, 6, 9, 12, 15, 18, 21, 24] as hour}
         <span>{hour}시</span>
       {/each}
     </div>

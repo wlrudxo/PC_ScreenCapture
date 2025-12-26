@@ -159,7 +159,7 @@ class ActivityTrackerApp:
             image = Image.new('RGB', (64, 64), color='#4CAF50')
 
         menu = pystray.Menu(
-            pystray.MenuItem("열기", self.show_window),
+            pystray.MenuItem("열기", self.show_window, default=True),
             pystray.MenuItem("종료", self.quit_app)
         )
 

@@ -202,7 +202,7 @@ class ImportExportManager:
         동작:
         1. 태그: 같은 이름이 있으면 기존 것 사용, 없으면 새로 생성
         2. 룰: merge_mode에 따라 처리
-           - merge_mode=True: 기존 룰 유지 + 새 룰 추가 (기본)
+           - merge_mode=True: 동일 (name + priority + tag_id)면 필터 합집합으로 업데이트, 없으면 추가
            - merge_mode=False: 기존 룰 삭제 + 새 룰만 추가
 
         Args:
@@ -236,7 +236,8 @@ class ImportExportManager:
                 'tags_imported': 0,
                 'tags_existed': 0,
                 'rules_imported': 0,
-                'rules_deleted': 0
+                'rules_deleted': 0,
+                'rules_merged': 0
             }
 
             # 태그 ID 매핑 (JSON의 tag_id -> DB의 tag_id)
@@ -267,6 +268,27 @@ class ImportExportManager:
                 for rule in existing_rules:
                     self.db_manager.delete_rule(rule['id'])
                     stats['rules_deleted'] += 1
+                existing_rule_map = {}
+            else:
+                existing_rule_map = {}
+                existing_rules = self.db_manager.get_all_rules()
+                for rule in existing_rules:
+                    key = (rule['name'], rule.get('priority', 0), rule['tag_id'])
+                    existing_rule_map[key] = rule
+
+            def _split_patterns(value: Optional[str]) -> List[str]:
+                if not value:
+                    return []
+                return [v.strip() for v in value.split(',') if v.strip()]
+
+            def _merge_patterns(existing: Optional[str], incoming: Optional[str]) -> Optional[str]:
+                combined = []
+                seen = set()
+                for item in _split_patterns(existing) + _split_patterns(incoming):
+                    if item not in seen:
+                        combined.append(item)
+                        seen.add(item)
+                return ",".join(combined) if combined else None
 
             # 새 룰 추가
             for rule in rules_data:
@@ -278,19 +300,45 @@ class ImportExportManager:
 
                 new_tag_id = tag_id_mapping[old_tag_id]
 
-                # 룰 생성
-                self.db_manager.create_rule(
-                    name=rule['name'],
-                    tag_id=new_tag_id,
-                    priority=rule.get('priority', 0),
-                    enabled=rule.get('enabled', True),
-                    process_pattern=rule.get('process_pattern'),
-                    url_pattern=rule.get('url_pattern'),
-                    window_title_pattern=rule.get('window_title_pattern'),
-                    chrome_profile=rule.get('chrome_profile'),
-                    process_path_pattern=rule.get('process_path_pattern')
-                )
-                stats['rules_imported'] += 1
+                name = rule['name']
+                priority = rule.get('priority', 0)
+                key = (name, priority, new_tag_id)
+
+                if merge_mode and key in existing_rule_map:
+                    existing = existing_rule_map[key]
+
+                    merged_process = _merge_patterns(existing.get('process_pattern'), rule.get('process_pattern'))
+                    merged_url = _merge_patterns(existing.get('url_pattern'), rule.get('url_pattern'))
+                    merged_title = _merge_patterns(existing.get('window_title_pattern'), rule.get('window_title_pattern'))
+                    merged_path = _merge_patterns(existing.get('process_path_pattern'), rule.get('process_path_pattern'))
+
+                    chrome_profile = rule.get('chrome_profile') or existing.get('chrome_profile')
+                    enabled = rule.get('enabled', existing.get('enabled', True))
+
+                    self.db_manager.update_rule(
+                        existing['id'],
+                        enabled=enabled,
+                        process_pattern=merged_process,
+                        url_pattern=merged_url,
+                        window_title_pattern=merged_title,
+                        chrome_profile=chrome_profile,
+                        process_path_pattern=merged_path
+                    )
+                    stats['rules_merged'] += 1
+                else:
+                    # 룰 생성
+                    self.db_manager.create_rule(
+                        name=name,
+                        tag_id=new_tag_id,
+                        priority=priority,
+                        enabled=rule.get('enabled', True),
+                        process_pattern=rule.get('process_pattern'),
+                        url_pattern=rule.get('url_pattern'),
+                        window_title_pattern=rule.get('window_title_pattern'),
+                        chrome_profile=rule.get('chrome_profile'),
+                        process_path_pattern=rule.get('process_path_pattern')
+                    )
+                    stats['rules_imported'] += 1
 
             # 결과 메시지
             message_parts = []
@@ -304,12 +352,14 @@ class ImportExportManager:
             if stats['rules_deleted'] > 0:
                 message_parts.append(f"  - 기존 삭제: {stats['rules_deleted']}개")
             message_parts.append(f"  - 새로 추가: {stats['rules_imported']}개")
+            if stats['rules_merged'] > 0:
+                message_parts.append(f"  - 병합 업데이트: {stats['rules_merged']}개")
 
             message = '\n'.join(message_parts)
 
             print(f"[ImportExport] 룰 Import 완료")
             print(f"  - 태그: 추가 {stats['tags_imported']}개, 기존 {stats['tags_existed']}개")
-            print(f"  - 룰: 추가 {stats['rules_imported']}개, 삭제 {stats['rules_deleted']}개")
+            print(f"  - 룰: 추가 {stats['rules_imported']}개, 삭제 {stats['rules_deleted']}개, 병합 {stats['rules_merged']}개")
 
             return True, message, stats
 

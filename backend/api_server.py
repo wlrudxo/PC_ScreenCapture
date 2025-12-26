@@ -29,13 +29,15 @@ from backend.database import DatabaseManager
 # main_webview.py에서 설정, 룰/집중 설정 변경 시 reload 호출용
 _rule_engine = None
 _focus_blocker = None
+_log_generator = None
 
 
-def set_runtime_engines(rule_engine, focus_blocker):
+def set_runtime_engines(rule_engine, focus_blocker, log_generator=None):
     """런타임 엔진 인스턴스 설정 (main_webview.py에서 호출)"""
-    global _rule_engine, _focus_blocker
+    global _rule_engine, _focus_blocker, _log_generator
     _rule_engine = rule_engine
     _focus_blocker = focus_blocker
+    _log_generator = log_generator
 
 
 def _reload_rule_engine():
@@ -52,15 +54,32 @@ def _reload_focus_blocker():
         print("[API] FocusBlocker 새로고침 완료")
 
 
+def _regenerate_logs():
+    """로그 재생성 (설정 변경 시)"""
+    if _log_generator:
+        import threading
+        def generate():
+            try:
+                from datetime import date
+                _log_generator.generate_daily_log(date.today())
+                _log_generator.generate_recent_log()
+                print("[API] 로그 재생성 완료")
+            except Exception as e:
+                print(f"[API] 로그 재생성 오류: {e}")
+        threading.Thread(target=generate, daemon=True).start()
+
+
 # === Pydantic Models ===
 
 class TagCreate(BaseModel):
     name: str
     color: str
+    category: Optional[str] = 'other'  # 'work', 'non_work', 'other'
 
 class TagUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+    category: Optional[str] = None  # 'work', 'non_work', 'other'
     alert_enabled: Optional[bool] = None
     alert_message: Optional[str] = None
     alert_cooldown: Optional[int] = None
@@ -243,12 +262,20 @@ async def get_dashboard_period(
 
     # 기본 통계
     tag_stats = db.get_stats_by_tag(start_date, end_date)
-    tag_stats_filtered = [s for s in tag_stats if s.get('tag_name') != '자리비움']
     process_stats = db.get_stats_by_process(start_date, end_date, limit=10)
 
     # 전체 활동 가져오기 (dailyTrend, websiteStats 계산용)
     activities = db.get_activities(start_date, end_date)
     all_tags = {t['id']: t for t in db.get_all_tags()}
+
+    # tagStats에 category 정보 추가 및 자리비움 제외
+    tag_stats_filtered = []
+    for s in tag_stats:
+        if s.get('tag_name') == '자리비움':
+            continue
+        tag_info = all_tags.get(s.get('tag_id'), {})
+        s['category'] = tag_info.get('category', 'other')
+        tag_stats_filtered.append(s)
 
     # === dailyTrend + websiteStats: 한 번의 순회로 계산 ===
     daily_data = defaultdict(lambda: defaultdict(float))
@@ -287,7 +314,7 @@ async def get_dashboard_period(
             except Exception:
                 pass
 
-    # dailyTrend 형식으로 변환
+    # dailyTrend 형식으로 변환 (category 포함)
     daily_trend = []
     current = start_date
     while current <= end_date_parsed:
@@ -301,6 +328,7 @@ async def get_dashboard_period(
                 "tag_id": tag_id,
                 "tag_name": tag_info.get('name', '미분류'),
                 "tag_color": tag_info.get('color', '#607D8B'),
+                "category": tag_info.get('category', 'other'),
                 "seconds": round(seconds)
             })
         daily_trend.append({
@@ -320,20 +348,12 @@ async def get_dashboard_period(
     target_hours = float(db.get_setting('target_daily_hours', '7'))
     target_ratio = float(db.get_setting('target_distraction_ratio', '20')) / 100
     TARGET_DAILY_SECONDS = target_hours * 3600
-    TARGET_DISTRACTION_RATIO = target_ratio
-    DISTRACTION_TAG_NAME = '딴짓'
-
-    # 딴짓 태그 ID 찾기
-    distraction_tag_id = None
-    for tag in all_tags.values():
-        if tag.get('name') == DISTRACTION_TAG_NAME:
-            distraction_tag_id = tag.get('id')
-            break
+    TARGET_NON_WORK_RATIO = target_ratio
 
     total_seconds = sum(s.get('total_seconds', 0) for s in tag_stats_filtered)
     days_count = (end_date_parsed - start_date).days + 1
 
-    # 목표 달성 일수 및 활동일 계산
+    # 목표 달성 일수 및 활동일 계산 (category='non_work' 기준)
     goal_achieved_days = 0
     active_days = 0
     for day in daily_trend:
@@ -342,11 +362,12 @@ async def get_dashboard_period(
         if day_total > 0:
             active_days += 1
 
-        day_distraction = sum(t['seconds'] for t in day['tags'] if t['tag_name'] == DISTRACTION_TAG_NAME)
+        # 비업무 시간 = category가 'non_work'인 태그들의 합
+        day_non_work = sum(t['seconds'] for t in day['tags'] if t.get('category') == 'non_work')
 
         if day_total >= TARGET_DAILY_SECONDS:
-            distraction_ratio = day_distraction / day_total if day_total > 0 else 0
-            if distraction_ratio < TARGET_DISTRACTION_RATIO:
+            non_work_ratio = day_non_work / day_total if day_total > 0 else 0
+            if non_work_ratio < TARGET_NON_WORK_RATIO:
                 goal_achieved_days += 1
 
     return {
@@ -497,7 +518,7 @@ async def get_tags():
 async def create_tag(tag: TagCreate):
     """태그 생성"""
     db = get_db()
-    tag_id = db.create_tag(tag.name, tag.color)
+    tag_id = db.create_tag(tag.name, tag.color, tag.category or 'other')
     _reload_rule_engine()
     return {"id": tag_id, "message": "Tag created"}
 
@@ -735,8 +756,16 @@ async def update_settings(data: SettingsUpdate):
     """설정 업데이트"""
     db = get_db()
 
+    # 기존 log_retention_days 값 확인
+    old_retention = db.get_setting('log_retention_days')
+
     for key, value in data.settings.items():
         db.set_setting(key, str(value) if value is not None else None)
+
+    # log_retention_days가 변경되면 로그 재생성
+    new_retention = data.settings.get('log_retention_days')
+    if new_retention and str(new_retention) != str(old_retention):
+        _regenerate_logs()
 
     return {"message": "Settings updated"}
 

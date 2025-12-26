@@ -380,7 +380,7 @@
 
       <div>
         <label for="targetRatio" class="block text-sm font-medium text-text-secondary mb-2">
-          딴짓 비율 상한 (%)
+          비업무 비율 상한 (%)
         </label>
         <input
           id="targetRatio"
@@ -391,7 +391,7 @@
           step="5"
           class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
         />
-        <p class="text-xs text-text-muted mt-1">딴짓 비율이 이 값 미만이어야 목표 달성</p>
+        <p class="text-xs text-text-muted mt-1">비업무 비율이 이 값 미만이어야 목표 달성</p>
       </div>
     </div>
   </div>

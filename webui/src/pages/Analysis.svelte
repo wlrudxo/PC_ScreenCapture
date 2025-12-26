@@ -25,8 +25,7 @@
 
   // 목표 기준 (설정에서 로드, 기본값 적용)
   let TARGET_DAILY_HOURS = 7;
-  let TARGET_DISTRACTION_RATIO = 0.20;
-  const DISTRACTION_TAG_NAME = '딴짓';
+  let TARGET_NON_WORK_RATIO = 0.20;
 
   // 차트 인스턴스
   let trendChart;
@@ -41,7 +40,7 @@
     try {
       const settingsRes = await api.getSettings();
       TARGET_DAILY_HOURS = parseFloat(settingsRes.settings?.target_daily_hours) || 7;
-      TARGET_DISTRACTION_RATIO = (parseFloat(settingsRes.settings?.target_distraction_ratio) || 20) / 100;
+      TARGET_NON_WORK_RATIO = (parseFloat(settingsRes.settings?.target_distraction_ratio) || 20) / 100;
     } catch (err) {
       console.warn('Failed to load goal settings, using defaults');
     }
@@ -104,7 +103,7 @@
       // 일별 트렌드 데이터
       dailyTrend = data.dailyTrend || [];
 
-      // 태그별 통계 (자리비움 제외)
+      // 태그별 통계 (자리비움 제외, category 포함)
       const totalSeconds = data.tagStats?.reduce((sum, t) => sum + (t.total_seconds || 0), 0) || 0;
       tagStats = (data.tagStats || [])
         .filter(t => t.tag_name !== '자리비움')
@@ -112,6 +111,7 @@
           id: tag.tag_id,
           name: tag.tag_name,
           color: tag.tag_color,
+          category: tag.category || 'other',
           duration: Math.round(tag.total_seconds || 0),
           percentage: totalSeconds > 0 ? ((tag.total_seconds / totalSeconds) * 100).toFixed(1) : 0
         }));
@@ -154,16 +154,16 @@
       return {
         date: date.toISOString().split('T')[0],
         tags: [
-          { tag_name: '업무', tag_color: '#4CAF50', seconds: 18000 + Math.random() * 7200 },
-          { tag_name: '딴짓', tag_color: '#FF5722', seconds: 3600 + Math.random() * 3600 }
+          { tag_name: '업무', tag_color: '#4CAF50', category: 'work', seconds: 18000 + Math.random() * 7200 },
+          { tag_name: '휴식', tag_color: '#FF5722', category: 'non_work', seconds: 3600 + Math.random() * 3600 }
         ]
       };
     });
 
     tagStats = [
-      { id: 1, name: '업무', color: '#4CAF50', duration: 126000, percentage: '70.0' },
-      { id: 2, name: '딴짓', color: '#FF5722', duration: 36000, percentage: '20.0' },
-      { id: 3, name: '미분류', color: '#607D8B', duration: 18000, percentage: '10.0' }
+      { id: 1, name: '업무', color: '#4CAF50', category: 'work', duration: 126000, percentage: '70.0' },
+      { id: 2, name: '휴식', color: '#FF5722', category: 'non_work', duration: 36000, percentage: '20.0' },
+      { id: 3, name: '미분류', color: '#607D8B', category: 'other', duration: 18000, percentage: '10.0' }
     ];
 
     processStats = [
@@ -206,24 +206,29 @@
     return dailyTrend.filter(d => d.tags && d.tags.length > 0).length;
   }
 
-  $: distractionTag = tagStats.find(t => t.name === DISTRACTION_TAG_NAME);
-  $: distractionRatio = totalActivitySeconds > 0 && distractionTag
-    ? (distractionTag.duration / totalActivitySeconds) * 100
+  // 비업무 비율 계산 (category='non_work'인 태그들의 합)
+  $: nonWorkSeconds = tagStats
+    .filter(t => t.category === 'non_work')
+    .reduce((sum, t) => sum + t.duration, 0);
+  $: nonWorkRatio = totalActivitySeconds > 0
+    ? (nonWorkSeconds / totalActivitySeconds) * 100
     : 0;
 
   $: goalAchievedDays = periodStats?.goalAchievedDays ?? calculateGoalDays();
 
   function calculateGoalDays() {
-    // 실제 데이터에서 목표 달성 일수 계산
+    // 실제 데이터에서 목표 달성 일수 계산 (category='non_work' 기준)
     let count = 0;
     for (const day of dailyTrend) {
       const dayTotal = day.tags?.reduce((sum, t) => sum + (t.seconds || 0), 0) || 0;
-      const dayDistraction = day.tags?.find(t => t.tag_name === DISTRACTION_TAG_NAME)?.seconds || 0;
+      const dayNonWork = day.tags
+        ?.filter(t => t.category === 'non_work')
+        .reduce((sum, t) => sum + (t.seconds || 0), 0) || 0;
 
       const dayHours = dayTotal / 3600;
-      const dayDistractionRatio = dayTotal > 0 ? dayDistraction / dayTotal : 0;
+      const dayNonWorkRatio = dayTotal > 0 ? dayNonWork / dayTotal : 0;
 
-      if (dayHours >= TARGET_DAILY_HOURS && dayDistractionRatio < TARGET_DISTRACTION_RATIO) {
+      if (dayHours >= TARGET_DAILY_HOURS && dayNonWorkRatio < TARGET_NON_WORK_RATIO) {
         count++;
       }
     }
@@ -232,7 +237,7 @@
 
   // 지표 상태 판단
   $: dailyAverageStatus = dailyAverageHours >= TARGET_DAILY_HOURS ? 'good' : 'warning';
-  $: distractionStatus = distractionRatio < TARGET_DISTRACTION_RATIO * 100 ? 'good' : 'warning';
+  $: nonWorkStatus = nonWorkRatio < TARGET_NON_WORK_RATIO * 100 ? 'good' : 'warning';
   $: goalRatio = daysCount > 0 ? (goalAchievedDays / daysCount) * 100 : 0;
   $: goalStatus = goalRatio >= 70 ? 'good' : goalRatio >= 50 ? 'warning' : 'danger';
 
@@ -493,14 +498,14 @@
       </div>
     </div>
 
-    <!-- Distraction Ratio -->
+    <!-- Non-Work Ratio -->
     <div class="bg-bg-card rounded-xl p-4 border border-border">
-      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">딴짓 비율</div>
-      <div class="text-2xl font-bold {distractionStatus === 'good' ? 'text-green-400' : 'text-red-400'}">
-        {distractionRatio.toFixed(1)}%
+      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">비업무 비율</div>
+      <div class="text-2xl font-bold {nonWorkStatus === 'good' ? 'text-green-400' : 'text-red-400'}">
+        {nonWorkRatio.toFixed(1)}%
       </div>
-      <div class="text-xs {distractionStatus === 'good' ? 'text-green-400' : 'text-red-400'} mt-1">
-        목표 {TARGET_DISTRACTION_RATIO * 100}% 미만 {distractionStatus === 'good' ? '달성' : '초과'}
+      <div class="text-xs {nonWorkStatus === 'good' ? 'text-green-400' : 'text-red-400'} mt-1">
+        목표 {TARGET_NON_WORK_RATIO * 100}% 미만 {nonWorkStatus === 'good' ? '달성' : '초과'}
       </div>
     </div>
 
@@ -512,7 +517,7 @@
         {goalAchievedDays}/{daysCount}일
       </div>
       <div class="text-xs text-text-muted mt-1">
-        {TARGET_DAILY_HOURS}시간 + 딴짓 {Math.round(TARGET_DISTRACTION_RATIO * 100)}% 미만
+        {TARGET_DAILY_HOURS}시간 + 비업무 {Math.round(TARGET_NON_WORK_RATIO * 100)}% 미만
       </div>
     </div>
   </div>

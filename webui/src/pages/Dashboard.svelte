@@ -87,7 +87,7 @@
   function loadDemoData() {
     tagStats = [
       { id: 1, name: '업무', color: '#4CAF50', duration: 14400, percentage: 60 },
-      { id: 2, name: '딴짓', color: '#FF5722', duration: 4800, percentage: 20 },
+      { id: 2, name: '휴식', color: '#FF5722', duration: 4800, percentage: 20 },
       { id: 3, name: '자리비움', color: '#9E9E9E', duration: 2400, percentage: 10 },
       { id: 4, name: '미분류', color: '#607D8B', duration: 2400, percentage: 10 }
     ];

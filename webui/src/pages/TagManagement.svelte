@@ -32,7 +32,14 @@
   let selectedGroups = new Set();
 
   // Form data
-  let tagForm = { name: '', color: '#4CAF50' };
+  let tagForm = { name: '', color: '#4CAF50', category: 'other' };
+
+  // 카테고리 옵션
+  const categoryOptions = [
+    { value: 'work', label: '업무', color: 'text-green-400' },
+    { value: 'non_work', label: '비업무', color: 'text-red-400' },
+    { value: 'other', label: '기타', color: 'text-text-muted' }
+  ];
   let ruleForm = {
     name: '',
     tag_id: null,
@@ -73,8 +80,8 @@
   function openTagModal(tag = null) {
     editingTag = tag;
     tagForm = tag
-      ? { name: tag.name, color: tag.color }
-      : { name: '', color: '#4CAF50' };
+      ? { name: tag.name, color: tag.color, category: tag.category || 'other' }
+      : { name: '', color: '#4CAF50', category: 'other' };
     showTagModal = true;
   }
 
@@ -361,8 +368,9 @@
     {:else}
       <div class="grid grid-cols-4 gap-4 p-5">
         {#each tags as tag}
+          {@const catOption = categoryOptions.find(c => c.value === tag.category) || categoryOptions[2]}
           <div class="bg-bg-secondary rounded-lg p-4 border border-border hover:border-border-light transition-colors">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-3">
                 <div class="w-4 h-4 rounded-full" style="background-color: {tag.color}"></div>
                 <span class="font-medium text-text-primary">{tag.name}</span>
@@ -388,7 +396,10 @@
                 </button>
               </div>
             </div>
-            <div class="text-sm text-text-muted">{tag.rule_count || 0}개 규칙</div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs px-2 py-0.5 rounded-full {catOption.color} bg-bg-tertiary">{catOption.label}</span>
+              <span class="text-sm text-text-muted">{tag.rule_count || 0}개 규칙</span>
+            </div>
           </div>
         {:else}
           <div class="col-span-4 text-center text-text-muted py-8">태그가 없습니다</div>
@@ -514,6 +525,18 @@
               class="flex-1 px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary font-mono text-sm"
             />
           </div>
+        </div>
+        <div>
+          <label class="block text-sm text-text-secondary mb-1">카테고리</label>
+          <select
+            bind:value={tagForm.category}
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent outline-none"
+          >
+            {#each categoryOptions as option}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+          </select>
+          <p class="text-xs text-text-muted mt-1">분석 페이지에서 업무/비업무 비율 계산에 사용됩니다</p>
         </div>
       </div>
 

@@ -159,6 +159,13 @@ class DatabaseManager:
         except Exception:
             pass
 
+        # 태그 카테고리 컬럼 추가 (마이그레이션): 'work', 'non_work', 'other'
+        try:
+            cursor.execute("ALTER TABLE tags ADD COLUMN category TEXT DEFAULT 'other'")
+            self.conn.commit()
+        except Exception:
+            pass
+
         # settings 테이블 (전역 설정)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
@@ -245,17 +252,21 @@ class DatabaseManager:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def create_tag(self, name: str, color: str) -> int:
+    def create_tag(self, name: str, color: str, category: str = 'other') -> int:
         """태그 생성"""
+        # 유효한 카테고리 값만 허용
+        if category not in ('work', 'non_work', 'other'):
+            category = 'other'
         cursor = self.conn.cursor()
         cursor.execute("""
-            INSERT INTO tags (name, color) VALUES (?, ?)
-        """, (name, color))
+            INSERT INTO tags (name, color, category) VALUES (?, ?, ?)
+        """, (name, color, category))
         self.conn.commit()
         return cursor.lastrowid
 
     def update_tag(self, tag_id: int, name: Optional[str] = None,
                    color: Optional[str] = None,
+                   category: Optional[str] = None,
                    alert_enabled: Optional[bool] = None,
                    alert_message: Optional[str] = None,
                    alert_cooldown: Optional[int] = None,
@@ -273,6 +284,11 @@ class DatabaseManager:
         if color:
             updates.append("color = ?")
             values.append(color)
+        if category is not None:
+            # 유효한 카테고리 값만 허용
+            if category in ('work', 'non_work', 'other'):
+                updates.append("category = ?")
+                values.append(category)
         if alert_enabled is not None:
             updates.append("alert_enabled = ?")
             values.append(1 if alert_enabled else 0)

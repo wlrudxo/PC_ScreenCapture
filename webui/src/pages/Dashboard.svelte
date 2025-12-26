@@ -339,21 +339,19 @@
   <!-- Process Stats -->
   <div class="bg-bg-card rounded-xl p-5 border border-border">
     <h2 class="text-lg font-semibold text-text-primary mb-4">프로세스별 사용 시간</h2>
-    <div class="space-y-3">
+    <div class="grid gap-3" style="grid-template-columns: auto 1fr auto auto;">
       {#each processStats as proc}
-        <div class="flex items-center gap-4">
-          <span class="w-32 text-sm text-text-secondary truncate">{proc.name}</span>
-          <div class="flex-1 h-6 bg-bg-tertiary rounded-lg overflow-hidden">
-            <div
-              class="h-full bg-accent rounded-lg transition-all duration-500"
-              style="width: {proc.percentage}%"
-            ></div>
-          </div>
-          <span class="w-20 text-sm text-text-primary text-right">{formatDuration(proc.duration)}</span>
-          <span class="w-12 text-sm text-text-muted text-right">{proc.percentage}%</span>
+        <span class="text-sm text-text-secondary">{proc.name}</span>
+        <div class="h-6 bg-bg-tertiary rounded-lg overflow-hidden">
+          <div
+            class="h-full bg-accent rounded-lg transition-all duration-500"
+            style="width: {proc.percentage}%"
+          ></div>
         </div>
+        <span class="text-sm text-text-primary text-right">{formatDuration(proc.duration)}</span>
+        <span class="w-12 text-sm text-text-muted text-right">{proc.percentage}%</span>
       {:else}
-        <div class="text-text-muted text-center py-4">데이터 없음</div>
+        <div class="col-span-4 text-text-muted text-center py-4">데이터 없음</div>
       {/each}
     </div>
   </div>

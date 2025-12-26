@@ -413,7 +413,7 @@ class DatabaseManager:
 
     def get_stats_by_process(self, start_date: datetime,
                             end_date: datetime, limit: int = 10) -> List[Dict[str, Any]]:
-        """프로세스별 사용 시간 통계 (__IDLE__, __LOCKED__ 제외)"""
+        """프로세스별 사용 시간 통계 (__IDLE__, __LOCKED__, LockApp.exe 제외)"""
         cursor = self.conn.cursor()
         cursor.execute("""
             SELECT
@@ -424,7 +424,7 @@ class DatabaseManager:
             FROM activities
             WHERE start_time >= ? AND start_time < ?
                   AND process_name IS NOT NULL
-                  AND process_name NOT IN ('__IDLE__', '__LOCKED__')
+                  AND process_name NOT IN ('__IDLE__', '__LOCKED__', 'LockApp.exe')
             GROUP BY process_name
             ORDER BY total_seconds DESC
             LIMIT ?

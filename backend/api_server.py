@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
 from pathlib import Path
+from collections import defaultdict
+from urllib.parse import urlparse
 
 from backend.database import DatabaseManager
 
@@ -222,25 +224,142 @@ async def get_dashboard_period(
     start: str = Query(..., description="Start date YYYY-MM-DD"),
     end: str = Query(..., description="End date YYYY-MM-DD")
 ):
-    """기간별 대시보드 통계"""
+    """기간별 대시보드 통계 (분석 페이지용)"""
     try:
         start_date = datetime.strptime(start, "%Y-%m-%d")
-        end_date = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)
+        end_date_parsed = datetime.strptime(end, "%Y-%m-%d")
+        end_date = end_date_parsed + timedelta(days=1)
     except ValueError:
         raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
 
     db = get_db()
 
+    # 기본 통계
     tag_stats = db.get_stats_by_tag(start_date, end_date)
-    # 자리비움 제외
-    tag_stats = [s for s in tag_stats if s.get('tag_name') != '자리비움']
+    tag_stats_filtered = [s for s in tag_stats if s.get('tag_name') != '자리비움']
     process_stats = db.get_stats_by_process(start_date, end_date, limit=10)
+
+    # 전체 활동 가져오기 (dailyTrend, websiteStats 계산용)
+    activities = db.get_activities(start_date, end_date)
+    all_tags = {t['id']: t for t in db.get_all_tags()}
+
+    # === dailyTrend: 날짜별 태그별 사용 시간 ===
+    daily_data = defaultdict(lambda: defaultdict(float))
+
+    for act in activities:
+        act_start = act.get('start_time')
+        act_end = act.get('end_time')
+        tag_id = act.get('tag_id')
+
+        if not act_start or not tag_id:
+            continue
+
+        if isinstance(act_start, str):
+            act_start = datetime.fromisoformat(act_start)
+        if isinstance(act_end, str):
+            act_end = datetime.fromisoformat(act_end) if act_end else datetime.now()
+        elif act_end is None:
+            act_end = datetime.now()
+
+        # 날짜 키
+        date_key = act_start.strftime("%Y-%m-%d")
+        duration = (act_end - act_start).total_seconds()
+        daily_data[date_key][tag_id] += duration
+
+    # dailyTrend 형식으로 변환
+    daily_trend = []
+    current = start_date
+    while current <= end_date_parsed:
+        date_key = current.strftime("%Y-%m-%d")
+        tags_for_day = []
+        for tag_id, seconds in daily_data.get(date_key, {}).items():
+            tag_info = all_tags.get(tag_id, {})
+            if tag_info.get('name') == '자리비움':
+                continue
+            tags_for_day.append({
+                "tag_id": tag_id,
+                "tag_name": tag_info.get('name', '미분류'),
+                "tag_color": tag_info.get('color', '#607D8B'),
+                "seconds": round(seconds)
+            })
+        daily_trend.append({
+            "date": date_key,
+            "tags": sorted(tags_for_day, key=lambda x: x['seconds'], reverse=True)
+        })
+        current += timedelta(days=1)
+
+    # === websiteStats: 도메인별 체류 시간 ===
+    domain_stats = defaultdict(float)
+
+    for act in activities:
+        chrome_url = act.get('chrome_url')
+        if not chrome_url:
+            continue
+
+        act_start = act.get('start_time')
+        act_end = act.get('end_time')
+
+        if isinstance(act_start, str):
+            act_start = datetime.fromisoformat(act_start)
+        if isinstance(act_end, str):
+            act_end = datetime.fromisoformat(act_end) if act_end else datetime.now()
+        elif act_end is None:
+            act_end = datetime.now()
+
+        duration = (act_end - act_start).total_seconds()
+
+        # 도메인 추출
+        try:
+            parsed = urlparse(chrome_url)
+            domain = parsed.netloc or parsed.path.split('/')[0]
+            if domain:
+                domain_stats[domain] += duration
+        except Exception:
+            pass
+
+    website_stats = [
+        {"domain": domain, "total_seconds": round(seconds)}
+        for domain, seconds in sorted(domain_stats.items(), key=lambda x: x[1], reverse=True)[:10]
+    ]
+
+    # === summary: 총 활동 시간, 목표 달성 일수 ===
+    TARGET_DAILY_SECONDS = 7 * 3600  # 7시간
+    TARGET_DISTRACTION_RATIO = 0.20  # 20%
+    DISTRACTION_TAG_NAME = '딴짓'
+
+    # 딴짓 태그 ID 찾기
+    distraction_tag_id = None
+    for tag in all_tags.values():
+        if tag.get('name') == DISTRACTION_TAG_NAME:
+            distraction_tag_id = tag.get('id')
+            break
+
+    total_seconds = sum(s.get('total_seconds', 0) for s in tag_stats_filtered)
+    days_count = (end_date_parsed - start_date).days + 1
+
+    # 목표 달성 일수 계산
+    goal_achieved_days = 0
+    for day in daily_trend:
+        day_total = sum(t['seconds'] for t in day['tags'])
+        day_distraction = sum(t['seconds'] for t in day['tags'] if t['tag_name'] == DISTRACTION_TAG_NAME)
+
+        if day_total >= TARGET_DAILY_SECONDS:
+            distraction_ratio = day_distraction / day_total if day_total > 0 else 0
+            if distraction_ratio < TARGET_DISTRACTION_RATIO:
+                goal_achieved_days += 1
 
     return {
         "start": start,
         "end": end,
-        "tagStats": tag_stats,
-        "processStats": process_stats
+        "tagStats": tag_stats_filtered,
+        "processStats": process_stats,
+        "dailyTrend": daily_trend,
+        "websiteStats": website_stats,
+        "summary": {
+            "totalSeconds": round(total_seconds),
+            "daysCount": days_count,
+            "goalAchievedDays": goal_achieved_days
+        }
     }
 
 

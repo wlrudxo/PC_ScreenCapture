@@ -4,6 +4,7 @@
 
   import Dashboard from './pages/Dashboard.svelte';
   import Timeline from './pages/Timeline.svelte';
+  import Analysis from './pages/Analysis.svelte';
   import TagManagement from './pages/TagManagement.svelte';
   import Notification from './pages/Notification.svelte';
   import Focus from './pages/Focus.svelte';
@@ -12,6 +13,7 @@
   const routes = {
     '/': Dashboard,
     '/timeline': Timeline,
+    '/analysis': Analysis,
     '/tags': TagManagement,
     '/notification': Notification,
     '/focus': Focus,

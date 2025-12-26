@@ -20,15 +20,16 @@ class MonitorEngineThread(threading.Thread):
     """
     백그라운드 스레드로 실행되는 모니터링 엔진
 
-    - 활성 창 감지 (2초 간격)
+    - 활성 창 감지 (설정 가능한 폴링 간격)
     - 화면 잠금/idle 감지
     - Chrome URL 수신
     - 룰 엔진으로 분류 → DB 저장
     - 콜백으로 UI 및 알림 이벤트 전달
     """
 
-    # Idle 임계값 (초) - 5분
-    IDLE_THRESHOLD = 300
+    # 기본값 (DB 설정이 없을 때 사용)
+    DEFAULT_POLLING_INTERVAL = 2
+    DEFAULT_IDLE_THRESHOLD = 300
 
     def __init__(
         self,
@@ -79,14 +80,33 @@ class MonitorEngineThread(threading.Thread):
         # 프로그램 시작 시 종료되지 않은 활동 정리
         self.db_manager.cleanup_unfinished_activities()
 
+    def _get_polling_interval(self) -> int:
+        """폴링 간격 설정 조회 (초)"""
+        try:
+            value = self.db_manager.get_setting('polling_interval')
+            return int(value) if value else self.DEFAULT_POLLING_INTERVAL
+        except Exception:
+            return self.DEFAULT_POLLING_INTERVAL
+
+    def _get_idle_threshold(self) -> int:
+        """유휴 상태 임계값 설정 조회 (초)"""
+        try:
+            value = self.db_manager.get_setting('idle_threshold')
+            return int(value) if value else self.DEFAULT_IDLE_THRESHOLD
+        except Exception:
+            return self.DEFAULT_IDLE_THRESHOLD
+
     def run(self):
-        """스레드 메인 루프 (2초마다 체크)"""
+        """스레드 메인 루프"""
         self._running = True
         self._stop_event.clear()
         print("[MonitorEngine] 모니터링 시작")
 
         while not self._stop_event.is_set():
             try:
+                # 설정값 조회 (매 루프마다 최신값 반영)
+                polling_interval = self._get_polling_interval()
+
                 # 현재 활동 정보 수집
                 activity_info = self.collect_activity_info()
 
@@ -103,12 +123,12 @@ class MonitorEngineThread(threading.Thread):
                     if hwnd:
                         self.focus_blocker.check_and_block(self.current_tag_id, hwnd)
 
-                # 2초 대기 (stop_event로 즉시 깨어날 수 있음)
-                self._stop_event.wait(timeout=2)
+                # 설정된 폴링 간격만큼 대기
+                self._stop_event.wait(timeout=polling_interval)
 
             except Exception as e:
                 print(f"[MonitorEngine] 오류 발생: {e}")
-                self._stop_event.wait(timeout=2)
+                self._stop_event.wait(timeout=self.DEFAULT_POLLING_INTERVAL)
 
         self._running = False
         print("[MonitorEngine] 루프 종료")
@@ -167,7 +187,8 @@ class MonitorEngineThread(threading.Thread):
 
         # 2. 유휴(idle) 상태 체크
         idle_seconds = self.screen_detector.get_idle_duration()
-        if idle_seconds > self.IDLE_THRESHOLD:
+        idle_threshold = self._get_idle_threshold()
+        if idle_seconds > idle_threshold:
             return {
                 'process_name': '__IDLE__',
                 'window_title': 'Idle',

@@ -724,7 +724,9 @@ async def get_settings():
         'alert_image_mode',
         'log_retention_days',
         'polling_interval',
-        'idle_threshold'
+        'idle_threshold',
+        'target_daily_hours',
+        'target_distraction_ratio'
     ]
 
     settings = {}

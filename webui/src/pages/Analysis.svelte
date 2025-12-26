@@ -32,6 +32,9 @@
   let trendChart;
   let comparisonChart;
 
+  // 마운트 완료 플래그
+  let mounted = false;
+
   // 초기화: 설정 로드 + 최근 7일
   onMount(async () => {
     // 설정에서 목표값 로드
@@ -44,6 +47,7 @@
     }
 
     initCharts();
+    mounted = true;  // reactive statement가 데이터 로드 트리거
 
     return () => {
       trendChart?.destroy();
@@ -51,8 +55,8 @@
     };
   });
 
-  // 날짜 변경 시 데이터 로드
-  $: if (startDate && endDate) {
+  // 날짜 변경 시 데이터 로드 (마운트 후에만)
+  $: if (mounted && startDate && endDate) {
     loadPeriodData();
   }
 
@@ -508,7 +512,7 @@
         {goalAchievedDays}/{daysCount}일
       </div>
       <div class="text-xs text-text-muted mt-1">
-        7시간 + 딴짓 20% 미만
+        {TARGET_DAILY_HOURS}시간 + 딴짓 {Math.round(TARGET_DISTRACTION_RATIO * 100)}% 미만
       </div>
     </div>
   </div>

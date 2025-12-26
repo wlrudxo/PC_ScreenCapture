@@ -40,24 +40,28 @@ export const formattedDate = derived(selectedDate, ($date) => {
   });
 });
 
-// Helper to format duration
+// Helper to format duration (with seconds)
 export function formatDuration(seconds) {
-  if (!seconds || seconds < 0) return '0분';
+  if (!seconds || seconds < 0) return '0초';
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
 
   if (hours > 0) {
-    return minutes > 0 ? `${hours}시간 ${minutes}분` : `${hours}시간`;
+    return `${hours}시간 ${minutes}분 ${secs}초`;
   }
-  return `${minutes}분`;
+  if (minutes > 0) {
+    return `${minutes}분 ${secs}초`;
+  }
+  return `${secs}초`;
 }
 
-// Helper to format time
+// Helper to format time (24h with seconds)
 export function formatTime(timestamp) {
   if (!timestamp) return '';
   const d = new Date(timestamp);
-  return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 // Helper to get tag color with fallback

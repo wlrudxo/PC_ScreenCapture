@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
   import { selectedDate, formattedDate, formatDuration, formatTime } from '../lib/stores/app.js';
+  import { activityUpdated } from '../lib/stores/websocket.js';
 
   let loading = true;
   let error = null;
@@ -11,6 +12,14 @@
 
   // 날짜/태그 변경 시 데이터 다시 로드
   $: loadTimelineData($selectedDate, selectedTag);
+
+  // WebSocket 실시간 업데이트 구독 (오늘 날짜일 때만)
+  $: if ($activityUpdated > 0) {
+    const today = new Date().toISOString().split('T')[0];
+    if ($selectedDate === today) {
+      loadTimelineData($selectedDate, selectedTag);
+    }
+  }
 
   async function loadTimelineData(date, tagId) {
     loading = true;

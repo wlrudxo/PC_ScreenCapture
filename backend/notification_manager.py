@@ -50,7 +50,10 @@ class NotificationManager:
             self._Toast = Toast
             self._ToastDisplayImage = ToastDisplayImage
             self._ToastImagePosition = ToastImagePosition
-            # 등록된 AUMID 사용 (register_hkey_aumid로 등록 필요)
+
+            # AUMID 등록 (windows-toasts 버전에 따라 자체 처리)
+            self._register_aumid(InteractableWindowsToaster, "ActivityTracker", "Activity Tracker")
+
             self._toaster = InteractableWindowsToaster(
                 applicationText=app_name,
                 notifierAUMID="ActivityTracker"
@@ -193,6 +196,37 @@ class NotificationManager:
 
         except Exception as e:
             print(f"[NotificationManager] 토스트 표시 실패: {e}")
+
+    def _register_aumid(self, toaster_class, aumid: str, app_name: str):
+        """AUMID 등록 (레지스트리 기반 fallback)"""
+        if hasattr(toaster_class, "register_hkey_aumid"):
+            try:
+                toaster_class.register_hkey_aumid(aumid=aumid, app_name=app_name)
+                return
+            except Exception:
+                pass
+        self._register_aumid_registry(aumid, app_name)
+
+    def _register_aumid_registry(self, aumid: str, app_name: str):
+        """windows-toasts 최신 버전 대응: 레지스트리에 AUMID 직접 등록"""
+        try:
+            import winreg
+        except Exception:
+            return
+
+        key_path = fr"Software\Classes\AppUserModelId\{aumid}"
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                current_name = None
+                try:
+                    current_name = winreg.QueryValueEx(key, "DisplayName")[0]
+                except FileNotFoundError:
+                    pass
+                if current_name != app_name:
+                    winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, app_name)
+                    print(f"[NotificationManager] AUMID 등록: {aumid}")
+        except OSError:
+            pass
 
     def _play_custom_sound(self, sound_settings: Optional[tuple] = None):
         """커스텀 알림음 재생"""

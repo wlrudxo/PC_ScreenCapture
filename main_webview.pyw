@@ -13,8 +13,47 @@ import webbrowser
 import socket
 import signal
 import ctypes
+import logging
 from datetime import datetime
 from pathlib import Path
+
+
+class _StreamFilter:
+    """Filter noisy pywebview native introspection errors from output."""
+
+    def __init__(self, stream, drop_substrings):
+        self._stream = stream
+        self._drop_substrings = drop_substrings
+        self._buffer = ""
+
+    def write(self, message):
+        if not message:
+            return 0
+        self._buffer += message
+        written = 0
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            line += "\n"
+            if any(sub in line for sub in self._drop_substrings):
+                written += len(line)
+                continue
+            self._stream.write(line)
+            written += len(line)
+        return written
+
+    def flush(self):
+        if self._buffer:
+            if not any(sub in self._buffer for sub in self._drop_substrings):
+                self._stream.write(self._buffer)
+            self._buffer = ""
+        self._stream.flush()
+
+    def isatty(self):
+        return self._stream.isatty()
+
+    @property
+    def encoding(self):
+        return getattr(self._stream, "encoding", None)
 
 try:
     import webview
@@ -33,6 +72,18 @@ from backend.monitor_engine_thread import MonitorEngineThread
 from backend.rule_engine import RuleEngine
 from backend.config import AppConfig
 from backend.log_generator import ActivityLogGenerator
+
+# Silence pywebview error spam (native object introspection).
+logging.getLogger("pywebview").disabled = True
+logging.getLogger("webview").disabled = True
+_pywebview_noise = [
+    "[pywebview] Error while processing app.window.native.",
+    "maximum recursion depth exceeded while calling a Python object",
+    "AccessibilityObject.Bounds",
+    "__abstractmethods__",
+]
+sys.stdout = _StreamFilter(sys.stdout, _pywebview_noise)
+sys.stderr = _StreamFilter(sys.stderr, _pywebview_noise)
 from backend.import_export import ImportExportManager
 
 
@@ -179,7 +230,12 @@ class ActivityTrackerApp:
         print("[Monitor Engine] Started (threading-based)")
 
         # API 서버에 런타임 엔진 인스턴스 전달 (룰/집중 설정 변경 시 reload 용)
-        set_runtime_engines(self.rule_engine, self.monitor_engine.focus_blocker, self.log_generator)
+        set_runtime_engines(
+            self.rule_engine,
+            self.monitor_engine.focus_blocker,
+            self.log_generator,
+            self.monitor_engine
+        )
 
         # 로그 생성 (백그라운드)
         self._start_log_generator()
@@ -366,6 +422,10 @@ class ActivityTrackerApp:
     def run(self):
         """앱 실행"""
         print("[App] Starting Activity Tracker V2 (PyWebView Edition)")
+
+        # Reduce noisy pywebview native introspection logs.
+        logging.getLogger("pywebview").setLevel(logging.ERROR)
+        logging.getLogger("webview").setLevel(logging.ERROR)
 
         # API 서버 시작
         self.start_api_server()

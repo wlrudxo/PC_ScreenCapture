@@ -30,14 +30,16 @@ from backend.database import DatabaseManager
 _rule_engine = None
 _focus_blocker = None
 _log_generator = None
+_monitor_engine = None
 
 
-def set_runtime_engines(rule_engine, focus_blocker, log_generator=None):
+def set_runtime_engines(rule_engine, focus_blocker, log_generator=None, monitor_engine=None):
     """런타임 엔진 인스턴스 설정 (main_webview.py에서 호출)"""
-    global _rule_engine, _focus_blocker, _log_generator
+    global _rule_engine, _focus_blocker, _log_generator, _monitor_engine
     _rule_engine = rule_engine
     _focus_blocker = focus_blocker
     _log_generator = log_generator
+    _monitor_engine = monitor_engine
 
 
 def _reload_rule_engine():
@@ -1210,7 +1212,20 @@ async def restore_database(file: UploadFile = File(...)):
     db = get_db()
     ie_manager = ImportExportManager(db)
 
-    success, message = ie_manager.import_database(str(temp_path))
+    # 모니터링 일시정지/재개 콜백
+    def pause_monitoring():
+        if _monitor_engine:
+            _monitor_engine.pause()
+
+    def resume_monitoring():
+        if _monitor_engine:
+            _monitor_engine.resume()
+
+    success, message = ie_manager.import_database(
+        str(temp_path),
+        pause_callback=pause_monitoring,
+        resume_callback=resume_monitoring
+    )
 
     # 임시 파일 삭제
     if temp_path.exists():

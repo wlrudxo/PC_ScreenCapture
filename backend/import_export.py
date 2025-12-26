@@ -65,6 +65,32 @@ class ImportExportManager:
             print(f"[ImportExport] DB 백업 실패: {e}")
             return False
 
+    def _check_sqlite_integrity(self, db_path: str) -> Tuple[bool, str]:
+        """
+        SQLite 파일 무결성 검사
+
+        Args:
+            db_path: 검사할 DB 파일 경로
+
+        Returns:
+            (유효 여부, 메시지)
+        """
+        import sqlite3
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.execute("PRAGMA integrity_check")
+            result = cursor.fetchone()[0]
+            conn.close()
+
+            if result == "ok":
+                return True, "무결성 검사 통과"
+            else:
+                return False, f"무결성 검사 실패: {result}"
+        except sqlite3.DatabaseError as e:
+            return False, f"SQLite 파일이 아니거나 손상됨: {str(e)}"
+        except Exception as e:
+            return False, f"검사 중 오류: {str(e)}"
+
     def import_database(self, backup_path: str, pause_callback=None, resume_callback=None) -> Tuple[bool, str]:
         """
         백업 파일로 데이터베이스 복원
@@ -90,6 +116,11 @@ class ImportExportManager:
             # 백업 파일 유효성 체크 (SQLite 파일인지)
             if backup_path.suffix.lower() != '.db':
                 return False, "올바른 데이터베이스 파일이 아닙니다. (.db 파일만 가능)"
+
+            # 복원 전 SQLite 무결성 검사
+            is_valid, msg = self._check_sqlite_integrity(str(backup_path))
+            if not is_valid:
+                return False, f"복원 파일이 유효하지 않습니다: {msg}"
 
             # 기존 DB를 임시 백업 (롤백용)
             temp_backup = self.db_path.with_suffix('.db.tmp')
@@ -117,7 +148,16 @@ class ImportExportManager:
                 # 새 DB로 교체
                 shutil.copy2(backup_path, self.db_path)
 
-                # 임시 백업 삭제
+                # 교체 후 무결성 재검사
+                is_valid, msg = self._check_sqlite_integrity(str(self.db_path))
+                if not is_valid:
+                    # 롤백
+                    shutil.copy2(temp_backup, self.db_path)
+                    if temp_backup.with_suffix('.db-wal.tmp').exists():
+                        shutil.copy2(temp_backup.with_suffix('.db-wal.tmp'), wal_path)
+                    raise Exception(f"복원된 DB 무결성 검사 실패: {msg}")
+
+                # 무결성 검사 통과 후에만 임시 백업 삭제
                 temp_backup.unlink()
                 if temp_backup.with_suffix('.db-wal.tmp').exists():
                     temp_backup.with_suffix('.db-wal.tmp').unlink()
@@ -133,8 +173,6 @@ class ImportExportManager:
                     if temp_backup.with_suffix('.db-wal.tmp').exists():
                         shutil.copy2(temp_backup.with_suffix('.db-wal.tmp'), wal_path)
                         temp_backup.with_suffix('.db-wal.tmp').unlink()
-                # Note: QThread는 재시작 불가하므로 resume_callback은 보통 None
-                # 호출자가 앱 재시작을 안내해야 함
                 if resume_callback:
                     resume_callback()
                 raise e

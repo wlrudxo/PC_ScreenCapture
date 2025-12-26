@@ -258,7 +258,10 @@ class DatabaseManager:
                    color: Optional[str] = None,
                    alert_enabled: Optional[bool] = None,
                    alert_message: Optional[str] = None,
-                   alert_cooldown: Optional[int] = None):
+                   alert_cooldown: Optional[int] = None,
+                   block_enabled: Optional[bool] = None,
+                   block_start_time: Optional[str] = None,
+                   block_end_time: Optional[str] = None):
         """태그 수정"""
         cursor = self.conn.cursor()
         updates = []
@@ -279,6 +282,15 @@ class DatabaseManager:
         if alert_cooldown is not None:
             updates.append("alert_cooldown = ?")
             values.append(max(1, alert_cooldown))  # 최소 1초
+        if block_enabled is not None:
+            updates.append("block_enabled = ?")
+            values.append(1 if block_enabled else 0)
+        if block_start_time is not None:
+            updates.append("block_start_time = ?")
+            values.append(block_start_time if block_start_time else None)
+        if block_end_time is not None:
+            updates.append("block_end_time = ?")
+            values.append(block_end_time if block_end_time else None)
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")

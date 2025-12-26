@@ -40,21 +40,20 @@ export const formattedDate = derived(selectedDate, ($date) => {
   });
 });
 
-// Helper to format duration (with seconds)
+// Helper to format duration (hours and minutes only)
 export function formatDuration(seconds) {
-  if (!seconds || seconds < 0) return '0초';
+  if (!seconds || seconds < 0) return '0분';
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
 
   if (hours > 0) {
-    return `${hours}시간 ${minutes}분 ${secs}초`;
+    return `${hours}시간 ${minutes}분`;
   }
   if (minutes > 0) {
-    return `${minutes}분 ${secs}초`;
+    return `${minutes}분`;
   }
-  return `${secs}초`;
+  return '1분 미만';
 }
 
 // Helper to format time (24h with seconds)

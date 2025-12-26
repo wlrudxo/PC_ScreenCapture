@@ -1,55 +1,103 @@
 <script>
+  import { onMount } from 'svelte';
+  import { api } from '../lib/api/client.js';
   import { selectedDate, formattedDate, formatDuration, formatTime } from '../lib/stores/app.js';
 
-  // Demo data
-  let activities = [
-    { id: 1, startTime: '2024-01-15T09:00:00', endTime: '2024-01-15T09:30:00', processName: 'chrome.exe', windowTitle: 'GitHub - Project', chromeUrl: 'https://github.com/project', tag: { name: '업무', color: '#4CAF50' } },
-    { id: 2, startTime: '2024-01-15T09:30:00', endTime: '2024-01-15T10:00:00', processName: 'Code.exe', windowTitle: 'main.py - VS Code', chromeUrl: null, tag: { name: '업무', color: '#4CAF50' } },
-    { id: 3, startTime: '2024-01-15T10:00:00', endTime: '2024-01-15T10:15:00', processName: 'chrome.exe', windowTitle: 'YouTube', chromeUrl: 'https://youtube.com', tag: { name: '딴짓', color: '#FF5722' } },
-    { id: 4, startTime: '2024-01-15T10:15:00', endTime: '2024-01-15T11:00:00', processName: 'Code.exe', windowTitle: 'api.py - VS Code', chromeUrl: null, tag: { name: '업무', color: '#4CAF50' } },
-  ];
-
+  let loading = true;
+  let error = null;
+  let activities = [];
+  let tags = [];
   let selectedTag = null;
-  let tags = [
-    { id: 1, name: '업무', color: '#4CAF50' },
-    { id: 2, name: '딴짓', color: '#FF5722' },
-    { id: 3, name: '자리비움', color: '#9E9E9E' },
-    { id: 4, name: '미분류', color: '#607D8B' }
-  ];
+
+  // 날짜/태그 변경 시 데이터 다시 로드
+  $: loadTimelineData($selectedDate, selectedTag);
+
+  async function loadTimelineData(date, tagId) {
+    loading = true;
+    error = null;
+
+    try {
+      const [timelineRes, tagsRes] = await Promise.all([
+        api.getTimeline(date, tagId),
+        api.getTags()
+      ]);
+
+      activities = (timelineRes.activities || []).map(act => ({
+        ...act,
+        tag: {
+          name: act.tag_name || '미분류',
+          color: act.tag_color || '#607D8B'
+        }
+      }));
+
+      tags = tagsRes.tags || [];
+
+    } catch (err) {
+      console.error('Failed to load timeline:', err);
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  }
 
   function getActivityDuration(activity) {
-    const start = new Date(activity.startTime);
-    const end = activity.endTime ? new Date(activity.endTime) : new Date();
+    if (!activity.start_time) return 0;
+    const start = new Date(activity.start_time);
+    const end = activity.end_time ? new Date(activity.end_time) : new Date();
     return Math.floor((end - start) / 1000);
   }
 
-  // Generate timeline bar segments
   function getTimelineSegments() {
+    if (activities.length === 0) return [];
+
     const segments = [];
-    const dayStart = 9 * 60; // 9 AM in minutes
-    const dayEnd = 18 * 60;  // 6 PM in minutes
+    const dayStart = 7 * 60;  // 7 AM
+    const dayEnd = 22 * 60;   // 10 PM
     const totalMinutes = dayEnd - dayStart;
 
     activities.forEach(activity => {
-      const start = new Date(activity.startTime);
-      const end = activity.endTime ? new Date(activity.endTime) : new Date();
+      if (!activity.start_time) return;
+
+      const start = new Date(activity.start_time);
+      const end = activity.end_time ? new Date(activity.end_time) : new Date();
 
       const startMinutes = start.getHours() * 60 + start.getMinutes();
       const endMinutes = end.getHours() * 60 + end.getMinutes();
 
-      const left = Math.max(0, ((startMinutes - dayStart) / totalMinutes) * 100);
-      const width = Math.min(100 - left, ((endMinutes - startMinutes) / totalMinutes) * 100);
+      // 범위 내로 클램핑
+      const clampedStart = Math.max(dayStart, Math.min(dayEnd, startMinutes));
+      const clampedEnd = Math.max(dayStart, Math.min(dayEnd, endMinutes));
+
+      if (clampedEnd <= clampedStart) return;
+
+      const left = ((clampedStart - dayStart) / totalMinutes) * 100;
+      const width = ((clampedEnd - clampedStart) / totalMinutes) * 100;
 
       segments.push({
         left: `${left}%`,
         width: `${Math.max(width, 0.5)}%`,
-        color: activity.tag.color,
+        color: activity.tag?.color || '#607D8B',
         activity
       });
     });
 
     return segments;
   }
+
+  function changeDate(delta) {
+    const current = new Date($selectedDate);
+    current.setDate(current.getDate() + delta);
+    $selectedDate = current.toISOString().split('T')[0];
+  }
+
+  function handleTagFilter(event) {
+    const value = event.target.value;
+    selectedTag = value === '' ? null : parseInt(value);
+  }
+
+  onMount(() => {
+    loadTimelineData($selectedDate, selectedTag);
+  });
 </script>
 
 <div class="p-6 space-y-6">
@@ -62,10 +110,10 @@
     <div class="flex items-center gap-4">
       <!-- Tag Filter -->
       <select
-        bind:value={selectedTag}
+        on:change={handleTagFilter}
         class="px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm"
       >
-        <option value={null}>모든 태그</option>
+        <option value="">모든 태그</option>
         {#each tags as tag}
           <option value={tag.id}>{tag.name}</option>
         {/each}
@@ -73,7 +121,11 @@
 
       <!-- Date Navigation -->
       <div class="flex items-center gap-2">
-        <button class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors">
+        <button
+          aria-label="이전 날짜"
+          class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors"
+          on:click={() => changeDate(-1)}
+        >
           <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
@@ -83,7 +135,11 @@
           bind:value={$selectedDate}
           class="px-3 py-2 rounded-lg bg-bg-secondary border border-border text-text-primary text-sm"
         />
-        <button class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors">
+        <button
+          aria-label="다음 날짜"
+          class="p-2 rounded-lg bg-bg-secondary border border-border hover:bg-bg-hover transition-colors"
+          on:click={() => changeDate(1)}
+        >
           <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
           </svg>
@@ -92,73 +148,99 @@
     </div>
   </div>
 
+  <!-- Error Banner -->
+  {#if error}
+    <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
+      데이터 로드 실패: {error}
+    </div>
+  {/if}
+
   <!-- Timeline Bar -->
   <div class="bg-bg-card rounded-xl p-5 border border-border">
     <h2 class="text-lg font-semibold text-text-primary mb-4">일간 타임라인</h2>
 
     <!-- Time labels -->
     <div class="flex justify-between text-xs text-text-muted mb-2 px-1">
-      {#each Array(10) as _, i}
-        <span>{9 + i}시</span>
+      {#each [7, 9, 11, 13, 15, 17, 19, 21] as hour}
+        <span>{hour}시</span>
       {/each}
     </div>
 
     <!-- Timeline bar -->
     <div class="relative h-10 bg-bg-tertiary rounded-lg overflow-hidden">
-      {#each getTimelineSegments() as segment}
-        <div
-          class="absolute top-0 h-full cursor-pointer hover:brightness-110 transition-all"
-          style="left: {segment.left}; width: {segment.width}; background-color: {segment.color}"
-          title="{segment.activity.processName} - {formatTime(segment.activity.startTime)}"
-        ></div>
-      {/each}
+      {#if loading}
+        <div class="absolute inset-0 flex items-center justify-center text-text-muted text-sm">
+          로딩 중...
+        </div>
+      {:else if getTimelineSegments().length === 0}
+        <div class="absolute inset-0 flex items-center justify-center text-text-muted text-sm">
+          활동 없음
+        </div>
+      {:else}
+        {#each getTimelineSegments() as segment}
+          <div
+            class="absolute top-0 h-full cursor-pointer hover:brightness-110 transition-all"
+            style="left: {segment.left}; width: {segment.width}; background-color: {segment.color}"
+            title="{segment.activity.process_name} - {formatTime(segment.activity.start_time)}"
+          ></div>
+        {/each}
+      {/if}
     </div>
   </div>
 
   <!-- Activity Table -->
   <div class="bg-bg-card rounded-xl border border-border overflow-hidden">
-    <div class="px-5 py-4 border-b border-border">
+    <div class="px-5 py-4 border-b border-border flex items-center justify-between">
       <h2 class="text-lg font-semibold text-text-primary">활동 기록</h2>
+      <span class="text-sm text-text-muted">{activities.length}개</span>
     </div>
 
-    <div class="overflow-x-auto">
-      <table class="w-full">
-        <thead class="bg-bg-secondary">
-          <tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">시간</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">기간</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">태그</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">프로세스</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">창 제목</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">URL</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
-          {#each activities as activity}
-            <tr class="hover:bg-bg-hover transition-colors">
-              <td class="px-4 py-3 text-sm text-text-primary whitespace-nowrap">
-                {formatTime(activity.startTime)} - {formatTime(activity.endTime)}
-              </td>
-              <td class="px-4 py-3 text-sm text-text-secondary whitespace-nowrap">
-                {formatDuration(getActivityDuration(activity))}
-              </td>
-              <td class="px-4 py-3">
-                <span
-                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
-                  style="background-color: {activity.tag.color}"
-                >
-                  {activity.tag.name}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-sm text-text-secondary">{activity.processName}</td>
-              <td class="px-4 py-3 text-sm text-text-secondary max-w-xs truncate">{activity.windowTitle}</td>
-              <td class="px-4 py-3 text-sm text-text-muted max-w-xs truncate">
-                {activity.chromeUrl || '-'}
-              </td>
+    {#if loading}
+      <div class="p-8 text-center text-text-muted">로딩 중...</div>
+    {:else if activities.length === 0}
+      <div class="p-8 text-center text-text-muted">활동 기록이 없습니다</div>
+    {:else}
+      <div class="overflow-x-auto max-h-96">
+        <table class="w-full">
+          <thead class="bg-bg-secondary sticky top-0">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">시간</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">기간</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">태그</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">프로세스</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">창 제목</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">URL</th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {#each activities as activity}
+              <tr class="hover:bg-bg-hover transition-colors">
+                <td class="px-4 py-3 text-sm text-text-primary whitespace-nowrap">
+                  {formatTime(activity.start_time)} - {activity.end_time ? formatTime(activity.end_time) : '진행중'}
+                </td>
+                <td class="px-4 py-3 text-sm text-text-secondary whitespace-nowrap">
+                  {formatDuration(getActivityDuration(activity))}
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
+                    style="background-color: {activity.tag.color}"
+                  >
+                    {activity.tag.name}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-sm text-text-secondary">{activity.process_name || '-'}</td>
+                <td class="px-4 py-3 text-sm text-text-secondary max-w-xs truncate" title={activity.window_title}>
+                  {activity.window_title || '-'}
+                </td>
+                <td class="px-4 py-3 text-sm text-text-muted max-w-xs truncate" title={activity.chrome_url}>
+                  {activity.chrome_url || '-'}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   </div>
 </div>

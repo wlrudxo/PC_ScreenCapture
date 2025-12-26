@@ -1,5 +1,15 @@
 <script>
+  import { onMount, onDestroy } from 'svelte';
   import { link, location } from 'svelte-spa-router';
+  import { connectWebSocket, disconnectWebSocket, wsConnected } from '../stores/websocket.js';
+
+  onMount(() => {
+    connectWebSocket();
+  });
+
+  onDestroy(() => {
+    disconnectWebSocket();
+  });
 
   const navItems = [
     { path: '/', label: '대시보드', icon: 'chart-pie' },
@@ -81,8 +91,13 @@
     <!-- Footer -->
     <div class="p-4 border-t border-border">
       <div class="flex items-center gap-2 text-xs text-text-muted">
-        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-        <span>모니터링 중</span>
+        {#if $wsConnected}
+          <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+          <span>실시간 연결됨</span>
+        {:else}
+          <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+          <span>연결 중...</span>
+        {/if}
       </div>
     </div>
   </nav>

@@ -1,30 +1,63 @@
 <script>
+  import { onMount } from 'svelte';
+  import { api } from '../lib/api/client.js';
+
+  let loading = true;
+  let error = null;
+  let saving = false;
+
   let settings = {
-    pollingInterval: 2,
-    idleThreshold: 300,
-    logRetentionDays: 30,
-    autoStart: true
+    polling_interval: '2',
+    idle_threshold: '300',
+    log_retention_days: '30'
   };
 
-  let showImportModal = false;
-  let showExportModal = false;
+  async function loadData() {
+    loading = true;
+    error = null;
 
-  async function handleExport() {
-    // TODO: Call API
-    alert('내보내기 기능은 API 연동 후 사용 가능합니다.');
-  }
-
-  async function handleImport() {
-    // TODO: Call API
-    alert('가져오기 기능은 API 연동 후 사용 가능합니다.');
-  }
-
-  async function handleDeleteUnclassified() {
-    if (confirm('미분류 활동을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      // TODO: Call API
-      alert('삭제 기능은 API 연동 후 사용 가능합니다.');
+    try {
+      const res = await api.getSettings();
+      settings = {
+        polling_interval: res.settings?.polling_interval || '2',
+        idle_threshold: res.settings?.idle_threshold || '300',
+        log_retention_days: res.settings?.log_retention_days || '30'
+      };
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+      error = err.message;
+    } finally {
+      loading = false;
     }
   }
+
+  async function saveSettings() {
+    saving = true;
+    try {
+      await api.updateSettings({ settings });
+      alert('설정이 저장되었습니다.');
+    } catch (err) {
+      alert('저장 실패: ' + err.message);
+    } finally {
+      saving = false;
+    }
+  }
+
+  function handleExport() {
+    alert('내보내기 기능은 추후 구현 예정입니다.');
+  }
+
+  function handleImport() {
+    alert('가져오기 기능은 추후 구현 예정입니다.');
+  }
+
+  function handleDeleteUnclassified() {
+    if (confirm('미분류 활동을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      alert('삭제 기능은 추후 구현 예정입니다.');
+    }
+  }
+
+  onMount(loadData);
 </script>
 
 <div class="p-6 space-y-6">
@@ -33,64 +66,77 @@
     <p class="text-sm text-text-secondary mt-1">애플리케이션 설정을 관리합니다</p>
   </div>
 
+  <!-- Error Banner -->
+  {#if error}
+    <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
+      데이터 로드 실패: {error}
+    </div>
+  {/if}
+
   <!-- General Settings -->
   <div class="bg-bg-card rounded-xl border border-border p-5 space-y-5">
     <h2 class="text-lg font-semibold text-text-primary">일반 설정</h2>
 
-    <div class="grid grid-cols-2 gap-6">
-      <div>
-        <label class="block text-sm font-medium text-text-secondary mb-2">
-          폴링 간격 (초)
-        </label>
-        <input
-          type="number"
-          bind:value={settings.pollingInterval}
-          min="1"
-          max="10"
-          class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
-        />
-        <p class="text-xs text-text-muted mt-1">활동 감지 주기 (기본값: 2초)</p>
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-text-secondary mb-2">
-          자리비움 감지 시간 (초)
-        </label>
-        <input
-          type="number"
-          bind:value={settings.idleThreshold}
-          min="60"
-          max="600"
-          class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
-        />
-        <p class="text-xs text-text-muted mt-1">입력 없이 이 시간이 지나면 자리비움 처리 (기본값: 300초)</p>
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-text-secondary mb-2">
-          로그 보관 기간 (일)
-        </label>
-        <input
-          type="number"
-          bind:value={settings.logRetentionDays}
-          min="7"
-          max="90"
-          class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
-        />
-        <p class="text-xs text-text-muted mt-1">활동 로그 자동 정리 기간 (기본값: 30일)</p>
-      </div>
-
-      <div class="flex items-center justify-between py-4">
+    {#if loading}
+      <div class="text-center text-text-muted py-4">로딩 중...</div>
+    {:else}
+      <div class="grid grid-cols-2 gap-6">
         <div>
-          <div class="text-text-primary font-medium">Windows 시작 시 자동 실행</div>
-          <div class="text-sm text-text-muted">컴퓨터 시작 시 자동으로 실행됩니다</div>
+          <label for="polling" class="block text-sm font-medium text-text-secondary mb-2">
+            폴링 간격 (초)
+          </label>
+          <input
+            id="polling"
+            type="number"
+            bind:value={settings.polling_interval}
+            min="1"
+            max="10"
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+          />
+          <p class="text-xs text-text-muted mt-1">활동 감지 주기 (기본값: 2초)</p>
         </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" bind:checked={settings.autoStart} class="sr-only peer">
-          <div class="w-11 h-6 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
-        </label>
+
+        <div>
+          <label for="idle" class="block text-sm font-medium text-text-secondary mb-2">
+            자리비움 감지 시간 (초)
+          </label>
+          <input
+            id="idle"
+            type="number"
+            bind:value={settings.idle_threshold}
+            min="60"
+            max="600"
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+          />
+          <p class="text-xs text-text-muted mt-1">입력 없이 이 시간이 지나면 자리비움 처리 (기본값: 300초)</p>
+        </div>
+
+        <div>
+          <label for="retention" class="block text-sm font-medium text-text-secondary mb-2">
+            로그 보관 기간 (일)
+          </label>
+          <input
+            id="retention"
+            type="number"
+            bind:value={settings.log_retention_days}
+            min="7"
+            max="90"
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+          />
+          <p class="text-xs text-text-muted mt-1">활동 로그 자동 정리 기간 (기본값: 30일)</p>
+        </div>
+
+        <div class="flex items-end">
+          <button
+            on:click={saveSettings}
+            disabled={saving}
+            class="px-6 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {saving ? '저장 중...' : '설정 저장'}
+          </button>
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 
   <!-- Data Management -->

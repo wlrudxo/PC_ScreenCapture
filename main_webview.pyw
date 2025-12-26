@@ -10,6 +10,7 @@ import threading
 import time
 import asyncio
 import webbrowser
+import socket
 from pathlib import Path
 
 try:
@@ -239,8 +240,23 @@ class ActivityTrackerApp:
         webview.start(debug=os.environ.get('DEV_MODE') == '1', gui='edgechromium')
 
 
+def is_port_in_use(port: int) -> bool:
+    """포트가 사용 중인지 확인"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('127.0.0.1', port))
+            return False
+        except OSError:
+            return True
+
+
 def main():
     """메인 함수"""
+    # 중복 실행 방지 (포트 8000 체크)
+    if is_port_in_use(8000):
+        print("[App] Already running (port 8000 in use). Exiting.")
+        sys.exit(0)
+
     # 개발 모드 설정
     if '--dev' in sys.argv:
         os.environ['DEV_MODE'] = '1'

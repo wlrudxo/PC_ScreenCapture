@@ -610,16 +610,44 @@ async def get_focus_settings():
 
     focus_settings = []
     for tag in tags:
+        # 자리비움, 미분류 태그는 차단 대상에서 제외
+        if tag['name'] in ('자리비움', '미분류'):
+            continue
+
         focus_settings.append({
             "id": tag['id'],
             "name": tag['name'],
             "color": tag['color'],
             "block_enabled": bool(tag.get('block_enabled', 0)),
-            "block_start_time": tag.get('block_start_time', '09:00'),
-            "block_end_time": tag.get('block_end_time', '18:00')
+            "block_start_time": tag.get('block_start_time') or None,
+            "block_end_time": tag.get('block_end_time') or None
         })
 
     return {"focusSettings": focus_settings}
+
+
+def _is_in_block_time(start_time: str, end_time: str) -> bool:
+    """현재 시간이 차단 시간대 내인지 확인 (자정 넘김 지원)"""
+    if not start_time or not end_time:
+        return True  # 시간 미설정 = 항상 차단 중
+
+    try:
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+
+        start_h, start_m = map(int, start_time.split(':'))
+        end_h, end_m = map(int, end_time.split(':'))
+        start_minutes = start_h * 60 + start_m
+        end_minutes = end_h * 60 + end_m
+
+        if start_minutes <= end_minutes:
+            # 일반 케이스: 09:00 ~ 18:00
+            return start_minutes <= current_minutes <= end_minutes
+        else:
+            # 자정 넘는 케이스: 22:00 ~ 02:00
+            return current_minutes >= start_minutes or current_minutes <= end_minutes
+    except:
+        return True  # 파싱 실패 시 차단 중으로 간주
 
 
 @app.put("/api/focus/{tag_id}")
@@ -633,20 +661,11 @@ async def update_focus_settings(tag_id: int, data: TagUpdate):
 
     # 차단 활성 시간대에는 수정 불가 체크
     if existing.get('block_enabled'):
-        now = datetime.now()
-        current_minutes = now.hour * 60 + now.minute
+        start_time = existing.get('block_start_time')
+        end_time = existing.get('block_end_time')
 
-        start_time = existing.get('block_start_time', '00:00')
-        end_time = existing.get('block_end_time', '00:00')
-
-        if start_time and end_time:
-            start_h, start_m = map(int, start_time.split(':'))
-            end_h, end_m = map(int, end_time.split(':'))
-            start_minutes = start_h * 60 + start_m
-            end_minutes = end_h * 60 + end_m
-
-            if start_minutes <= current_minutes <= end_minutes:
-                raise HTTPException(403, "Cannot modify during active block period")
+        if _is_in_block_time(start_time, end_time):
+            raise HTTPException(403, "Cannot modify during active block period")
 
     update_data = data.model_dump(exclude_unset=True)
     if update_data:

@@ -36,11 +36,14 @@
   function isBlockActive(setting) {
     if (!setting.block_enabled) return false;
 
+    const startTime = setting.block_start_time;
+    const endTime = setting.block_end_time;
+
+    // 시간 미설정 = 항상 차단 중
+    if (!startTime || !endTime) return true;
+
     const now = currentTime;
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    const startTime = setting.block_start_time || '00:00';
-    const endTime = setting.block_end_time || '00:00';
 
     const [startH, startM] = startTime.split(':').map(Number);
     const [endH, endM] = endTime.split(':').map(Number);
@@ -48,7 +51,13 @@
     const startMinutes = startH * 60 + startM;
     const endMinutes = endH * 60 + endM;
 
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    if (startMinutes <= endMinutes) {
+      // 일반 케이스: 09:00 ~ 18:00
+      return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    } else {
+      // 자정 넘는 케이스: 22:00 ~ 02:00
+      return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+    }
   }
 
   function canModify(setting) {
@@ -106,7 +115,7 @@
     </svg>
     <div class="text-sm text-text-secondary">
       <p>차단이 활성화된 시간대에는 설정을 변경할 수 없습니다.</p>
-      <p class="mt-1">집중 시간이 끝난 후 설정을 조정하세요.</p>
+      <p class="mt-1">시간대 미설정 시 항상 차단됩니다. 22:00~02:00 같은 자정 넘는 범위도 지원됩니다.</p>
     </div>
   </div>
 

@@ -458,23 +458,6 @@ class DatabaseManager:
 
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_latest_activity(self) -> Optional[Dict[str, Any]]:
-        """가장 최근 활동 조회"""
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT * FROM activities ORDER BY start_time DESC LIMIT 1
-        """)
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-    def update_activity_tag(self, activity_id: int, tag_id: int):
-        """활동의 태그 수동 변경"""
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE activities SET tag_id = ?, rule_id = NULL WHERE id = ?
-        """, (tag_id, activity_id))
-        self.conn.commit()
-
     # === 통계 ===
     def get_stats_by_tag(self, start_date: datetime,
                         end_date: datetime) -> List[Dict[str, Any]]:

@@ -83,9 +83,6 @@ class MonitorEngineThread(threading.Thread):
         self.last_activity_info: Optional[Dict[str, Any]] = None
         self._running = False
         self._stop_event = threading.Event()
-        self._pause_event = threading.Event()  # 일시정지용
-        self._db_close_requested = threading.Event()
-        self._db_close_done = threading.Event()
         self._last_played_sound_id: Optional[int] = None
         self._last_shown_image_id: Optional[int] = None
 
@@ -116,17 +113,6 @@ class MonitorEngineThread(threading.Thread):
 
         while not self._stop_event.is_set():
             try:
-                # 일시정지 상태면 대기
-                if self._pause_event.is_set():
-                    if self._db_close_requested.is_set():
-                        self._db_close_requested.clear()
-                        try:
-                            self.db_manager.close()
-                        except Exception as e:
-                            print(f"[MonitorEngine] DB close warning: {e}")
-                        self._db_close_done.set()
-                    self._stop_event.wait(timeout=0.5)
-                    continue
 
                 # 설정값 조회 (매 루프마다 최신값 반영)
                 polling_interval = self._get_polling_interval()
@@ -217,28 +203,6 @@ class MonitorEngineThread(threading.Thread):
     def running(self) -> bool:
         """모니터링 실행 중 여부"""
         return self._running
-
-    def pause(self):
-        """모니터링 일시정지 (DB 복원 등에 사용)"""
-        print("[MonitorEngine] 일시정지 요청됨")
-        self._pause_event.set()
-        self.end_current_activity()
-
-    def request_db_close(self, timeout: float = 3.0) -> bool:
-        """모니터링 스레드에서 DB 연결을 닫도록 요청"""
-        self._db_close_done.clear()
-        self._db_close_requested.set()
-        return self._db_close_done.wait(timeout=timeout)
-
-    def resume(self):
-        """모니터링 재개"""
-        print("[MonitorEngine] 재개 요청됨")
-        self._pause_event.clear()
-
-    @property
-    def is_paused(self) -> bool:
-        """일시정지 상태 여부"""
-        return self._pause_event.is_set()
 
     def collect_activity_info(self) -> Dict[str, Any]:
         """

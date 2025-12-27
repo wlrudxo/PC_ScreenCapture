@@ -1388,16 +1388,6 @@ async def websocket_activity(websocket: WebSocket):
         ws_manager.disconnect(websocket)
 
 
-# === Broadcast function (for external use) ===
-
-async def broadcast_activity_update(activity: dict):
-    """활동 업데이트를 모든 WebSocket 클라이언트에 전송"""
-    await ws_manager.broadcast({
-        "type": "activity_update",
-        "data": activity
-    })
-
-
 # === Health Check ===
 
 @app.get("/api/health")

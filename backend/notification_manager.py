@@ -64,10 +64,6 @@ class NotificationManager:
             self._available = False
             print("[NotificationManager] 경고: windows-toasts 미설치 - 알림 비활성화")
 
-    def is_available(self) -> bool:
-        """알림 기능 사용 가능 여부"""
-        return self._available
-
     def _can_notify(self, tag_id: int, cooldown: int = None) -> bool:
         """
         쿨다운 체크 - 알림 가능 여부
@@ -255,21 +251,3 @@ class NotificationManager:
 
         except Exception as e:
             print(f"[NotificationManager] 사운드 재생 실패: {e}")
-
-    def set_cooldown(self, seconds: int):
-        """쿨다운 시간 설정"""
-        self.cooldown = max(0, seconds)
-        print(f"[NotificationManager] 쿨다운 설정: {self.cooldown}초")
-
-    def reset_cooldown(self, tag_id: Optional[int] = None):
-        """
-        쿨다운 초기화
-
-        Args:
-            tag_id: 특정 태그만 초기화 (None이면 전체)
-        """
-        with self._lock:
-            if tag_id is None:
-                self._last_notification.clear()
-            elif tag_id in self._last_notification:
-                del self._last_notification[tag_id]

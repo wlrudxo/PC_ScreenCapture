@@ -2,7 +2,7 @@
 
 > PC 활동을 실시간 추적해 태그별로 자동 분류하고, 통계/알림/집중 모드를 제공하는 Windows 데스크톱 앱
 
-![Python](https://img.shields.io/badge/Python-3.13-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.10-blue.svg)
 ![Svelte](https://img.shields.io/badge/Svelte-Frontend-orange.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green.svg)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-yellow.svg)
@@ -49,6 +49,16 @@
 - **활동 로그 자동 생성**
   - daily/monthly 로그
   - recent.log (LLM 분석용)
+
+  ---
+
+## 다운로드
+
+[v1.0.0 다운로드](https://github.com/wlrudxo/PC_ScreenCapture/releases/latest)
+
+1. `ActivityTracker.zip` 다운로드
+2. 원하는 위치에 압축 해제
+3. `ActivityTracker.exe` 실행
 
 ---
 
@@ -189,7 +199,6 @@ PC_ScreenCapture/
 │   │   └── App.svelte
 │   └── dist/                    # 빌드 결과물
 ├── chrome_extension/            # Chrome 확장 (Manifest V3)
-└── legacy_pyqt/                 # PyQt6 레거시
 ```
 
 상세 아키텍처는 `ARCHITECTURE.md` 참고.

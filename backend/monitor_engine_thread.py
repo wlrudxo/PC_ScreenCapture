@@ -84,6 +84,8 @@ class MonitorEngineThread(threading.Thread):
         self._running = False
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()  # 일시정지용
+        self._db_close_requested = threading.Event()
+        self._db_close_done = threading.Event()
         self._last_played_sound_id: Optional[int] = None
         self._last_shown_image_id: Optional[int] = None
 
@@ -116,6 +118,13 @@ class MonitorEngineThread(threading.Thread):
             try:
                 # 일시정지 상태면 대기
                 if self._pause_event.is_set():
+                    if self._db_close_requested.is_set():
+                        self._db_close_requested.clear()
+                        try:
+                            self.db_manager.close()
+                        except Exception as e:
+                            print(f"[MonitorEngine] DB close warning: {e}")
+                        self._db_close_done.set()
                     self._stop_event.wait(timeout=0.5)
                     continue
 
@@ -149,6 +158,10 @@ class MonitorEngineThread(threading.Thread):
                 self._stop_event.wait(timeout=self.DEFAULT_POLLING_INTERVAL)
 
         self._running = False
+        try:
+            self.db_manager.close()
+        except Exception as e:
+            print(f"[MonitorEngine] DB close warning: {e}")
         print("[MonitorEngine] 루프 종료")
 
     def _check_date_change(self):
@@ -210,6 +223,12 @@ class MonitorEngineThread(threading.Thread):
         print("[MonitorEngine] 일시정지 요청됨")
         self._pause_event.set()
         self.end_current_activity()
+
+    def request_db_close(self, timeout: float = 3.0) -> bool:
+        """모니터링 스레드에서 DB 연결을 닫도록 요청"""
+        self._db_close_done.clear()
+        self._db_close_requested.set()
+        return self._db_close_done.wait(timeout=timeout)
 
     def resume(self):
         """모니터링 재개"""

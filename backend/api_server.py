@@ -3,6 +3,9 @@ FastAPI 서버 - 웹 UI용 REST + WebSocket API
 """
 import asyncio
 import mimetypes
+import os
+import subprocess
+import sys
 
 # Windows MIME type 문제 해결
 mimetypes.add_type("application/javascript", ".js")
@@ -1097,6 +1100,25 @@ async def get_alert_image_file(image_id: int):
     return FileResponse(file_path, media_type="image/png")
 
 
+@app.post("/api/open/appdata")
+async def open_appdata_folder():
+    """앱 데이터 폴더 열기"""
+    from backend.config import AppConfig
+
+    app_dir = AppConfig.get_app_dir()
+    try:
+        if os.name == 'nt':
+            os.startfile(app_dir)  # type: ignore[attr-defined]
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', str(app_dir)])
+        else:
+            subprocess.Popen(['xdg-open', str(app_dir)])
+    except Exception as e:
+        raise HTTPException(500, f"Failed to open app data folder: {e}")
+
+    return {"message": "App data folder opened"}
+
+
 @app.get("/api/alerts/tags")
 async def get_tag_alert_settings():
     """태그별 알림 설정 조회"""
@@ -1209,13 +1231,24 @@ async def restore_database(file: UploadFile = File(...)):
     with open(temp_path, 'wb') as f:
         f.write(content)
 
-    db = get_db()
-    ie_manager = ImportExportManager(db)
+    db_instance = get_db()
+    ie_manager = ImportExportManager(db_instance)
 
     # 모니터링 일시정지/재개 콜백
     def pause_monitoring():
+        global db
         if _monitor_engine:
             _monitor_engine.pause()
+            if not _monitor_engine.request_db_close(timeout=3.0):
+                print("[API] MonitorEngine DB close timeout")
+        # api_server의 db 연결도 WAL checkpoint 후 닫기
+        if db is not None:
+            try:
+                db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                db.close()
+            except Exception as e:
+                print(f"[API] DB close warning: {e}")
+            db = None
 
     def resume_monitoring():
         if _monitor_engine:
@@ -1367,8 +1400,21 @@ async def system_exit():
 
 # === Static Files (Web UI) ===
 
-# dist 폴더 경로 (backend/ 상위의 webui/dist)
-_dist_path = Path(__file__).parent.parent / "webui" / "dist"
+# dist 폴더 경로 (PyInstaller/개발환경 모두 대응)
+def _resolve_dist_path() -> Path:
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "webui" / "dist")
+    candidates.append(Path(sys.executable).parent / "webui" / "dist")
+    candidates.append(Path(__file__).parent.parent / "webui" / "dist")
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[-1]
+
+_dist_path = _resolve_dist_path()
 
 if _dist_path.exists():
     # 정적 파일 서빙 (CSS, JS, assets)

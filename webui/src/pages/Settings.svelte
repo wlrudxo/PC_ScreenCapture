@@ -49,6 +49,7 @@
   let activeBlocks = [];
   let appIconSrc = '';
   let iconLoadFailed = false;
+  let openAppDataInProgress = false;
 
   function resolveAppIconSrc() {
     if (typeof window === 'undefined') return '';
@@ -94,6 +95,20 @@
       toast.error('저장 실패: ' + err.message);
     } finally {
       saving = false;
+    }
+  }
+
+  async function openAppDataFolder() {
+    if (openAppDataInProgress) return;
+    openAppDataInProgress = true;
+    try {
+      await api.openAppData();
+      toast.success('AppData 폴더를 열었습니다.');
+    } catch (err) {
+      console.error('Failed to open app data folder:', err);
+      toast.error('AppData 폴더 열기에 실패했습니다.');
+    } finally {
+      openAppDataInProgress = false;
     }
   }
 
@@ -508,7 +523,7 @@
   <div class="bg-bg-card rounded-xl border border-border p-5">
     <h2 class="text-lg font-semibold text-text-primary mb-4">정보</h2>
 
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <div class="w-12 h-12 rounded-xl bg-accent flex items-center justify-center">
           {#if appIconSrc && !iconLoadFailed}
@@ -529,8 +544,23 @@
           <div class="text-sm text-text-muted">Version 2.0.0</div>
         </div>
       </div>
-      <div class="text-sm text-text-muted">
-        PyWebView Edition
+      <div class="flex items-center gap-3">
+        <div class="text-sm text-text-muted">
+          PyWebView Edition
+        </div>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg hover:border-accent transition-colors disabled:opacity-50"
+          on:click={openAppDataFolder}
+          disabled={openAppDataInProgress}
+        >
+          <svg class="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+          <span class="text-text-primary">
+            {openAppDataInProgress ? '여는 중...' : 'AppData 열기'}
+          </span>
+        </button>
       </div>
     </div>
   </div>

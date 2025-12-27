@@ -130,8 +130,14 @@ class ImportExportManager:
                 if pause_callback:
                     pause_callback()
 
+                # WAL 체크포인트 실행 (WAL 파일을 메인 DB에 병합)
+                try:
+                    self.db_manager.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception as e:
+                    print(f"[ImportExport] WAL checkpoint 경고: {e}")
+
                 # 모든 connection 닫기
-                self.db_manager.conn.close()
+                self.db_manager.close()
 
                 # 기존 DB 임시 백업
                 shutil.copy2(self.db_path, temp_backup)

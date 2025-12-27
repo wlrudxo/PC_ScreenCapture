@@ -3,6 +3,7 @@ SQLite 데이터베이스 관리
 """
 import sqlite3
 import threading
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, List, Any
@@ -196,15 +197,15 @@ class DatabaseManager:
 
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
-            ('업무', '#4CAF50'),
-            ('딴짓', '#FF5722'),
-            ('자리비움', '#9E9E9E'),
-            ('미분류', '#607D8B'),
+            ('업무', '#4CAF50', 'work'),
+            ('휴식', '#FF5722', 'non_work'),
+            ('자리비움', '#9E9E9E', 'other'),
+            ('미분류', '#607D8B', 'other'),
         ]
-        for name, color in default_tags:
+        for name, color, category in default_tags:
             cursor.execute("""
-                INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)
-            """, (name, color))
+                INSERT OR IGNORE INTO tags (name, color, category) VALUES (?, ?, ?)
+            """, (name, color, category))
 
         # 기본 룰 삽입 (이미 존재하면 무시)
         # 먼저 태그 ID 조회
@@ -213,23 +214,73 @@ class DatabaseManager:
         if away_tag_id:
             away_tag_id = away_tag_id[0]
 
-            # 화면 잠금 룰 (이미 존재하면 무시)
+            # 자리비움 기본 룰 (이미 존재하면 무시)
             cursor.execute("SELECT COUNT(*) FROM rules WHERE name='화면 잠금'")
             if cursor.fetchone()[0] == 0:
                 cursor.execute("""
                     INSERT INTO rules (name, priority, process_pattern, tag_id)
-                    VALUES ('화면 잠금', 100, '__LOCKED__', ?)
+                    VALUES ('화면 잠금', 100, '__LOCKED__,__IDLE__', ?)
                 """, (away_tag_id,))
 
-            # Idle 룰 (이미 존재하면 무시)
-            cursor.execute("SELECT COUNT(*) FROM rules WHERE name='Idle 상태'")
-            if cursor.fetchone()[0] == 0:
-                cursor.execute("""
-                    INSERT INTO rules (name, priority, process_pattern, tag_id)
-                    VALUES ('Idle 상태', 90, '__IDLE__', ?)
-                """, (away_tag_id,))
+        self._seed_alert_assets()
 
         self.conn.commit()
+
+    def _seed_alert_assets(self):
+        """기본 알림 이미지/사운드 시드"""
+        cursor = self.conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM alert_images")
+        image_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM alert_sounds")
+        sound_count = cursor.fetchone()[0]
+
+        project_root = Path(__file__).parent.parent
+        resource_dir = project_root / "resources"
+
+        if image_count == 0:
+            images_dir = AppConfig.get_images_dir()
+            candidates = [
+                resource_dir / "default_01.png",
+                resource_dir / "default_02.png",
+                project_root / "default_01.png",
+                project_root / "default_02.png",
+            ]
+            seeded = 0
+            for candidate in candidates:
+                if not candidate.exists():
+                    continue
+                dest_path = images_dir / candidate.name
+                if not dest_path.exists():
+                    shutil.copy2(candidate, dest_path)
+                cursor.execute(
+                    "INSERT INTO alert_images (name, file_path) VALUES (?, ?)",
+                    (candidate.stem, str(dest_path))
+                )
+                seeded += 1
+            if seeded:
+                self.conn.commit()
+
+        if sound_count == 0:
+            sounds_dir = AppConfig.get_sounds_dir()
+            sound_candidates = [
+                resource_dir / "default_sound.wav",
+                resource_dir / "default_sound.mp3",
+                project_root / "default_sound.wav",
+                project_root / "default_sound.mp3",
+            ]
+            for candidate in sound_candidates:
+                if not candidate.exists():
+                    continue
+                dest_path = sounds_dir / candidate.name
+                if not dest_path.exists():
+                    shutil.copy2(candidate, dest_path)
+                cursor.execute(
+                    "INSERT INTO alert_sounds (name, file_path) VALUES (?, ?)",
+                    (candidate.stem, str(dest_path))
+                )
+                break
 
     # === 태그 관리 ===
     def get_all_tags(self) -> List[Dict[str, Any]]:
@@ -673,9 +724,13 @@ class DatabaseManager:
 
     def close(self):
         """DB 연결 종료"""
-        self.conn.close()
+        if hasattr(self._local, 'conn'):
+            try:
+                self._local.conn.close()
+            finally:
+                del self._local.conn
 
     def __del__(self):
         """소멸자"""
-        if hasattr(self, 'conn'):
-            self.conn.close()
+        if hasattr(self, '_local') and hasattr(self._local, 'conn'):
+            self._local.conn.close()

@@ -91,6 +91,7 @@ export const api = {
   // Settings
   getSettings: () => request('/settings'),
   updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  openAppData: () => request('/open/appdata', { method: 'POST' }),
 
   // Alerts - Settings
   getAlertSettings: () => request('/alerts/settings'),

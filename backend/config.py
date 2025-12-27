@@ -77,6 +77,13 @@ class AppConfig:
         return sounds_dir
 
     @staticmethod
+    def get_images_dir():
+        """알림 이미지 저장 디렉토리"""
+        images_dir = AppConfig.get_app_dir() / "images"
+        images_dir.mkdir(exist_ok=True)
+        return images_dir
+
+    @staticmethod
     def get_activity_logs_dir():
         """활동 로그 디렉토리 (LLM 분석용)"""
         logs_dir = AppConfig.get_app_dir() / "activity_logs"

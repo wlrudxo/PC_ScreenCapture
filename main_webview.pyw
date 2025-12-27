@@ -202,6 +202,7 @@ class ActivityTrackerApp:
 
     def start_api_server(self):
         """FastAPI 서버를 백그라운드 스레드에서 실행"""
+        logging.info("[API Server] Starting...")
         config = uvicorn.Config(
             fastapi_app,
             host="127.0.0.1",
@@ -219,6 +220,8 @@ class ActivityTrackerApp:
                 loop.run_until_complete(server.serve())
             except Exception as e:
                 logging.exception("[API Server] Failed to start: %s", e)
+            finally:
+                logging.info("[API Server] Thread exiting")
 
         self.api_server_thread = threading.Thread(target=run, daemon=True)
         self.api_server_thread.start()
@@ -276,13 +279,18 @@ class ActivityTrackerApp:
         """API 서버 준비 대기"""
         deadline = time.time() + timeout
         url = f"http://127.0.0.1:{self.api_port}/api/health"
+        last_error = None
         while time.time() < deadline:
             try:
                 with urllib.request.urlopen(url, timeout=1) as resp:
                     if resp.status == 200:
+                        logging.info("[API Server] Health check OK")
                         return True
-            except Exception:
+            except Exception as e:
+                last_error = e
                 time.sleep(0.5)
+        if last_error:
+            logging.error("[API Server] Health check failed: %s", last_error)
         return False
 
     def _on_activity_detected(self, activity_info: dict):
@@ -593,15 +601,17 @@ def main():
         print("[Mode] Development mode enabled")
 
     log_path = AppConfig.get_log_path()
-    logging.basicConfig(
-        filename=str(log_path),
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s"
-    )
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+    file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
     logging.getLogger("pywebview").setLevel(logging.CRITICAL)
     logging.getLogger("webview").setLevel(logging.CRITICAL)
-    root_logger = logging.getLogger()
     log_filter = _LogFilter(_pywebview_noise)
+    root_logger.addFilter(log_filter)
     for handler in root_logger.handlers:
         handler.addFilter(log_filter)
     logging.getLogger("pywebview").addFilter(log_filter)

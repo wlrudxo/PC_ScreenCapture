@@ -236,16 +236,21 @@ class DatabaseManager:
         cursor.execute("SELECT COUNT(*) FROM alert_sounds")
         sound_count = cursor.fetchone()[0]
 
-        project_root = Path(__file__).parent.parent
-        resource_dir = project_root / "resources"
+        # PyInstaller 빌드 환경에서는 _MEIPASS 사용
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_path = Path(sys._MEIPASS)
+        else:
+            base_path = Path(__file__).parent.parent
+        resource_dir = base_path / "resources"
 
         if image_count == 0:
             images_dir = AppConfig.get_images_dir()
             candidates = [
                 resource_dir / "default_01.png",
                 resource_dir / "default_02.png",
-                project_root / "default_01.png",
-                project_root / "default_02.png",
+                base_path / "default_01.png",
+                base_path / "default_02.png",
             ]
             seeded = 0
             for candidate in candidates:
@@ -267,8 +272,8 @@ class DatabaseManager:
             sound_candidates = [
                 resource_dir / "default_sound.wav",
                 resource_dir / "default_sound.mp3",
-                project_root / "default_sound.wav",
-                project_root / "default_sound.mp3",
+                base_path / "default_sound.wav",
+                base_path / "default_sound.mp3",
             ]
             for candidate in sound_candidates:
                 if not candidate.exists():

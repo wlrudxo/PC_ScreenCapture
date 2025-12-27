@@ -268,7 +268,13 @@
   async function confirmExit() {
     exitInProgress = true;
     try {
-      await api.exitApp();
+      // pywebview API 사용 (네이티브 앱)
+      if (window.pywebview?.api?.exit_app) {
+        await window.pywebview.api.exit_app();
+      } else {
+        // fallback: REST API (개발 모드)
+        await api.exitApp();
+      }
       toast.success('앱을 종료합니다...');
     } catch (err) {
       toast.error('종료 실패: ' + err.message);

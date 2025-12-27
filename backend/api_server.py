@@ -36,13 +36,16 @@ _log_generator = None
 _monitor_engine = None
 
 
-def set_runtime_engines(rule_engine, focus_blocker, log_generator=None, monitor_engine=None):
+def set_runtime_engines(rule_engine, focus_blocker, log_generator=None, monitor_engine=None, exit_callback=None):
     """런타임 엔진 인스턴스 설정 (main_webview.py에서 호출)"""
-    global _rule_engine, _focus_blocker, _log_generator, _monitor_engine
+    global _rule_engine, _focus_blocker, _log_generator, _monitor_engine, _exit_callback
     _rule_engine = rule_engine
     _focus_blocker = focus_blocker
     _log_generator = log_generator
     _monitor_engine = monitor_engine
+    if exit_callback:
+        _exit_callback = exit_callback
+        print(f"[API] Exit callback set via set_runtime_engines")
 
 
 def _reload_rule_engine():
@@ -161,13 +164,13 @@ def get_db() -> DatabaseManager:
 # === Lifespan ===
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    global db
-    db = DatabaseManager()
+    # Startup - DB는 get_db()에서 lazy init (race condition 방지)
     yield
     # Shutdown
+    global db
     if db:
         db.close()
+        db = None
 
 
 # === FastAPI App ===
@@ -1372,18 +1375,22 @@ def set_exit_callback(callback):
     """종료 콜백 설정"""
     global _exit_callback
     _exit_callback = callback
+    print(f"[API] Exit callback set: {callback}")
 
 
 @app.post("/api/system/exit")
 async def system_exit():
     """앱 종료"""
-    if _exit_callback:
-        # 비동기로 종료 (응답 후 종료되도록)
-        import asyncio
-        asyncio.get_event_loop().call_later(0.5, _exit_callback)
-        return {"message": "Shutting down..."}
-    else:
-        raise HTTPException(500, "Exit callback not configured")
+    import os
+    import threading
+
+    def do_exit():
+        import time
+        time.sleep(0.5)
+        os._exit(0)
+
+    threading.Thread(target=do_exit, daemon=True).start()
+    return {"message": "Shutting down..."}
 
 
 # === Static Files (Web UI) ===
@@ -1394,6 +1401,8 @@ def _resolve_dist_path() -> Path:
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         candidates.append(Path(meipass) / "webui" / "dist")
+    # PyInstaller 6.x: _internal 폴더 구조
+    candidates.append(Path(sys.executable).parent / "_internal" / "webui" / "dist")
     candidates.append(Path(sys.executable).parent / "webui" / "dist")
     candidates.append(Path(__file__).parent.parent / "webui" / "dist")
 

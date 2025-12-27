@@ -13,6 +13,8 @@ import urllib.error
 import threading
 import time
 import asyncio
+import multiprocessing
+import signal
 import webbrowser
 import socket
 import signal
@@ -20,6 +22,10 @@ import ctypes
 import logging
 from datetime import datetime
 from pathlib import Path
+
+if getattr(sys, 'frozen', False) or not sys.stdout:
+    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
 
 
 class _StreamFilter:
@@ -103,6 +109,33 @@ sys.stderr = _StreamFilter(sys.stderr, _pywebview_noise)
 from backend.import_export import ImportExportManager
 
 
+def _run_api_server(port: int):
+    import logging
+    import uvicorn
+    from backend.config import AppConfig
+    from backend.api_server import app as fastapi_app
+
+    log_path = AppConfig.get_log_path().with_name("api.log")
+    logging.basicConfig(
+        filename=str(log_path),
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        force=True
+    )
+
+    config = uvicorn.Config(
+        fastapi_app,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        access_log=False
+    )
+    if hasattr(config, "handle_signals"):
+        config.handle_signals = False
+    server = uvicorn.Server(config)
+    server.run()
+
+
 class PyWebViewApi:
     """PyWebView JavaScript API - 네이티브 다이얼로그 제공"""
 
@@ -173,6 +206,16 @@ class PyWebViewApi:
         except Exception as e:
             return {"success": False, "message": f"오류: {str(e)}"}
 
+    def exit_app(self) -> dict:
+        """앱 종료"""
+        print("[PyWebViewApi] exit_app called")
+        try:
+            self.app.quit_app()
+            return {"success": True}
+        except Exception as e:
+            print(f"[PyWebViewApi] exit_app error: {e}")
+            return {"success": False, "message": str(e)}
+
 
 class ActivityTrackerApp:
     """PyWebView 기반 Activity Tracker 앱"""
@@ -181,6 +224,8 @@ class ActivityTrackerApp:
         self.window = None
         self.tray_icon = None
         self.api_server_thread = None
+        self.api_process = None
+        self.api_pid_path = AppConfig.get_api_pid_path()
         self.monitor_engine = None
         self.db_manager = None
         self.rule_engine = None
@@ -190,6 +235,7 @@ class ActivityTrackerApp:
         # 포트 설정
         self.api_port = 8000
         self.webui_url = self._get_webui_url()
+        self.webview_profile_dir = AppConfig.get_app_dir() / "webview_profile"
 
     def _get_webui_url(self) -> str:
         """웹 UI URL 결정"""
@@ -201,30 +247,18 @@ class ActivityTrackerApp:
         return f'http://127.0.0.1:{self.api_port}'
 
     def start_api_server(self):
-        """FastAPI 서버를 백그라운드 스레드에서 실행"""
+        """FastAPI 서버를 별도 프로세스로 실행"""
         logging.info("[API Server] Starting...")
-        config = uvicorn.Config(
-            fastapi_app,
-            host="127.0.0.1",
-            port=self.api_port,
-            log_level="warning"
+        self.api_process = multiprocessing.Process(
+            target=_run_api_server,
+            args=(self.api_port,),
+            daemon=True
         )
-        server = uvicorn.Server(config)
-
-        def run():
-            # 이벤트 루프 새로 생성 (스레드에서 필요)
-            import asyncio
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(server.serve())
-            except Exception as e:
-                logging.exception("[API Server] Failed to start: %s", e)
-            finally:
-                logging.info("[API Server] Thread exiting")
-
-        self.api_server_thread = threading.Thread(target=run, daemon=True)
-        self.api_server_thread.start()
+        self.api_process.start()
+        try:
+            self.api_pid_path.write_text(str(self.api_process.pid), encoding="utf-8")
+        except Exception as e:
+            logging.error("[API Server] Failed to write PID file: %s", e)
         print(f"[API Server] Started on port {self.api_port}")
 
     def start_monitor_engine(self):
@@ -256,7 +290,8 @@ class ActivityTrackerApp:
             self.rule_engine,
             self.monitor_engine.focus_blocker,
             self.log_generator,
-            self.monitor_engine
+            self.monitor_engine,
+            self.quit_app  # exit callback도 함께 전달
         )
 
         # 로그 생성 (백그라운드)
@@ -431,6 +466,15 @@ class ActivityTrackerApp:
         if self.window:
             self.window.destroy()
 
+        if self.api_process and self.api_process.is_alive():
+            self.api_process.terminate()
+            self.api_process.join(timeout=3.0)
+        if self.api_pid_path.exists():
+            try:
+                self.api_pid_path.unlink()
+            except Exception:
+                pass
+
         print("[App] Shutting down...")
         os._exit(0)
 
@@ -474,6 +518,9 @@ class ActivityTrackerApp:
         time.sleep(1)  # 서버 시작 대기
         if not self._wait_for_api_ready(timeout=12.0):
             logging.error("[API Server] Health check failed")
+            if self.api_process and self.api_process.is_alive():
+                self.api_process.terminate()
+                self.api_process.join(timeout=3.0)
             ctypes.windll.user32.MessageBoxW(
                 0,
                 "API server did not respond. Please restart the app.",
@@ -512,7 +559,11 @@ class ActivityTrackerApp:
 
         # WebView 시작 (메인 스레드에서 실행)
         # EdgeChromium 백엔드 사용 (Windows 10/11 기본 탑재)
-        webview.start(debug=os.environ.get('DEV_MODE') == '1', gui='edgechromium')
+        webview.start(
+            debug=os.environ.get('DEV_MODE') == '1',
+            gui='edgechromium',
+            storage_path=str(self.webview_profile_dir)
+        )
 
 
 def is_port_in_use(port: int) -> bool:
@@ -559,6 +610,37 @@ def activate_existing_window() -> bool:
 
 def main():
     """메인 함수"""
+    multiprocessing.freeze_support()
+
+    def terminate_pid(pid: int) -> bool:
+        if os.name != 'nt':
+            try:
+                os.kill(pid, signal.SIGTERM)
+                return True
+            except Exception:
+                return False
+        try:
+            PROCESS_TERMINATE = 0x0001
+            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+            if not handle:
+                return False
+            ctypes.windll.kernel32.TerminateProcess(handle, 1)
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except Exception:
+            return False
+
+    # 이전 API 프로세스가 남아있으면 정리
+    api_pid_path = AppConfig.get_api_pid_path()
+    if api_pid_path.exists():
+        try:
+            pid = int(api_pid_path.read_text(encoding="utf-8").strip())
+            if terminate_pid(pid):
+                time.sleep(0.5)
+            api_pid_path.unlink()
+        except Exception:
+            pass
+
     # 중복 실행 방지 (포트 열기 전 mutex 체크)
     if not ensure_single_instance():
         activate_existing_window()

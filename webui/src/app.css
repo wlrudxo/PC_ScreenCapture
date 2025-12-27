@@ -8,8 +8,38 @@
   font-display: swap;
 }
 
-/* Dark theme custom properties */
+/* Theme variables - Tailwind v4 compatible */
 @theme {
+  /* Light theme (default) */
+  --color-bg-primary: #fafafa;
+  --color-bg-secondary: #f0f4f8;
+  --color-bg-tertiary: #e8eef3;
+  --color-bg-card: #ffffff;
+  --color-bg-hover: #e5ebf1;
+
+  --color-border: #dde4ec;
+  --color-border-light: #c8d4e0;
+
+  --color-text-primary: #2d3748;
+  --color-text-secondary: #5a6b7d;
+  --color-text-muted: #8896a6;
+
+  --color-accent: #7c8cf5;
+  --color-accent-hover: #6366f1;
+
+  --color-tag-work: #68d391;
+  --color-tag-distraction: #fc8181;
+  --color-tag-away: #a0aec0;
+  --color-tag-unclassified: #90a4ae;
+}
+
+html {
+  color-scheme: light;
+}
+
+/* Dark theme override */
+html.dark {
+  color-scheme: dark;
   --color-bg-primary: #0f0f0f;
   --color-bg-secondary: #1a1a1a;
   --color-bg-tertiary: #242424;
@@ -26,15 +56,10 @@
   --color-accent: #6366f1;
   --color-accent-hover: #818cf8;
 
-  /* Tag colors from original app */
   --color-tag-work: #4CAF50;
   --color-tag-distraction: #FF5722;
   --color-tag-away: #9E9E9E;
   --color-tag-unclassified: #607D8B;
-}
-
-html {
-  color-scheme: dark;
 }
 
 body {

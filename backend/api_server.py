@@ -860,6 +860,47 @@ def _is_in_block_time(start_time: str, end_time: str) -> bool:
         return True  # 파싱 실패 시 차단 중으로 간주
 
 
+class EmergencyResetRequest(BaseModel):
+    reason: str
+
+
+@app.post("/api/focus/emergency-reset")
+async def emergency_reset_focus(data: EmergencyResetRequest):
+    """
+    집중 모드 긴급 해제
+
+    모든 태그의 block_enabled를 false로 설정하고 로그 기록
+    """
+    if not data.reason or len(data.reason.strip()) < 10:
+        raise HTTPException(400, "사유는 최소 10자 이상 입력해야 합니다.")
+
+    db = get_db()
+    tags = db.get_all_tags()
+
+    # block_enabled=true인 태그들 찾아서 해제
+    reset_tags = []
+    for tag in tags:
+        if tag.get('block_enabled'):
+            db.update_tag(tag['id'], block_enabled=False)
+            reset_tags.append(tag['name'])
+
+    # FocusBlocker 새로고침
+    _reload_focus_blocker()
+
+    # 로그 기록
+    if _log_generator and reset_tags:
+        try:
+            _log_generator.log_emergency_reset(reset_tags, data.reason.strip())
+        except Exception as e:
+            print(f"[API] 긴급해제 로그 기록 오류: {e}")
+
+    return {
+        "success": True,
+        "reset_count": len(reset_tags),
+        "reset_tags": reset_tags
+    }
+
+
 @app.put("/api/focus/{tag_id}")
 async def update_focus_settings(tag_id: int, data: TagUpdate):
     """집중 모드 설정 수정"""

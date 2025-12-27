@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
   import { toast } from '../lib/stores/toast.js';
+  import { theme } from '../lib/stores/theme.js';
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
   import HelpModal from '../lib/components/HelpModal.svelte';
   import HelpButton from '../lib/components/HelpButton.svelte';
@@ -50,6 +51,13 @@
   let appIconSrc = '';
   let iconLoadFailed = false;
   let openAppDataInProgress = false;
+
+  // Emergency reset
+  let showEmergencyModal = false;
+  let emergencyReason = '';
+  let emergencyCountdown = 0;
+  let emergencyCountdownInterval = null;
+  let emergencyInProgress = false;
 
   function resolveAppIconSrc() {
     if (typeof window === 'undefined') return '';
@@ -286,6 +294,58 @@
     activeBlocks = [];
   }
 
+  // === Emergency Reset ===
+  function handleEmergencyClick() {
+    emergencyReason = '';
+    emergencyCountdown = 0;
+    showEmergencyModal = true;
+  }
+
+  function startEmergencyCountdown() {
+    if (emergencyReason.trim().length < 10) {
+      toast.error('사유는 최소 10자 이상 입력해야 합니다.');
+      return;
+    }
+
+    emergencyCountdown = 30;
+    emergencyCountdownInterval = setInterval(() => {
+      emergencyCountdown -= 1;
+      if (emergencyCountdown <= 0) {
+        clearInterval(emergencyCountdownInterval);
+        emergencyCountdownInterval = null;
+        executeEmergencyReset();
+      }
+    }, 1000);
+  }
+
+  async function executeEmergencyReset() {
+    emergencyInProgress = true;
+    try {
+      const res = await api.emergencyResetFocus(emergencyReason.trim());
+      if (res.reset_count > 0) {
+        toast.success(`${res.reset_count}개 태그의 집중 모드가 해제되었습니다.`);
+      } else {
+        toast.info('해제할 집중 모드가 없습니다.');
+      }
+      showEmergencyModal = false;
+      emergencyReason = '';
+    } catch (err) {
+      toast.error('긴급 해제 실패: ' + err.message);
+    } finally {
+      emergencyInProgress = false;
+    }
+  }
+
+  function cancelEmergencyReset() {
+    if (emergencyCountdownInterval) {
+      clearInterval(emergencyCountdownInterval);
+      emergencyCountdownInterval = null;
+    }
+    emergencyCountdown = 0;
+    showEmergencyModal = false;
+    emergencyReason = '';
+  }
+
   onMount(() => {
     appIconSrc = resolveAppIconSrc();
     loadData();
@@ -352,6 +412,23 @@
             bind:checked={autoStartEnabled}
             on:change={toggleAutoStart}
             disabled={autoStartLoading}
+            class="sr-only peer"
+          >
+          <div class="w-11 h-6 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+        </label>
+      </div>
+
+      <!-- Theme Toggle -->
+      <div class="flex items-center justify-between py-3 border-b border-border">
+        <div>
+          <div class="text-text-primary font-medium">다크 모드</div>
+          <div class="text-sm text-text-muted">어두운 테마를 사용합니다</div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={$theme === 'dark'}
+            on:change={() => theme.toggle()}
             class="sr-only peer"
           >
           <div class="w-11 h-6 bg-bg-tertiary rounded-full peer peer-checked:bg-accent transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
@@ -570,6 +647,21 @@
     </div>
   </div>
 
+  <!-- Emergency Reset -->
+  <div class="bg-bg-card rounded-xl border border-red-500/30 p-5">
+    <h2 class="text-lg font-semibold text-text-primary mb-4">집중 모드 긴급 해제</h2>
+    <p class="text-sm text-text-muted mb-4">설정 실수 등으로 집중 모드를 해제할 수 없을 때 사용합니다. 사유 입력 후 30초 대기가 필요합니다.</p>
+    <button
+      on:click={handleEmergencyClick}
+      class="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 rounded-lg border border-red-500/30 hover:bg-red-500/20 transition-colors"
+    >
+      <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      <span class="text-red-400 font-medium">긴급 해제</span>
+    </button>
+  </div>
+
   <!-- App Exit -->
   <div class="bg-bg-card rounded-xl border border-red-500/30 p-5">
     <h2 class="text-lg font-semibold text-text-primary mb-4">앱 종료</h2>
@@ -691,6 +783,81 @@
     <p class="text-text-muted">트레이 아이콘과 모든 모니터링이 중지됩니다.</p>
   {/if}
 </ConfirmModal>
+
+<!-- Emergency Reset Modal -->
+{#if showEmergencyModal}
+  <div
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    on:click={cancelEmergencyReset}
+    on:keydown={(e) => e.key === 'Escape' && cancelEmergencyReset()}
+    role="dialog"
+    tabindex="-1"
+  >
+    <div
+      class="bg-bg-card rounded-xl p-6 w-[28rem] border border-red-500/30"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="document"
+    >
+      <h3 class="text-lg font-semibold text-red-400 mb-4">집중 모드 긴급 해제</h3>
+
+      {#if emergencyCountdown > 0}
+        <!-- 카운트다운 중 -->
+        <div class="text-center py-8">
+          <div class="text-6xl font-bold text-red-400 mb-4">{emergencyCountdown}</div>
+          <p class="text-text-secondary mb-2">잠시 후 모든 집중 모드가 해제됩니다.</p>
+          <p class="text-text-muted text-sm">정말로 해제하시겠습니까?</p>
+        </div>
+
+        <div class="flex justify-center mt-6">
+          <button
+            on:click={cancelEmergencyReset}
+            class="px-6 py-2 bg-bg-secondary text-text-primary rounded-lg hover:bg-bg-hover transition-colors"
+          >
+            취소
+          </button>
+        </div>
+      {:else}
+        <!-- 사유 입력 -->
+        <div class="space-y-4">
+          <p class="text-text-secondary text-sm">
+            긴급 해제 사유를 입력해주세요. 이 내용은 활동 로그에 기록됩니다.
+          </p>
+
+          <textarea
+            bind:value={emergencyReason}
+            placeholder="해제 사유를 입력하세요 (최소 10자)"
+            rows="3"
+            class="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none"
+          ></textarea>
+
+          <div class="flex justify-between items-center text-xs">
+            <span class="text-text-muted">{emergencyReason.trim().length}/10자 이상</span>
+            {#if emergencyReason.trim().length >= 10}
+              <span class="text-green-400">입력 완료</span>
+            {/if}
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            on:click={cancelEmergencyReset}
+            class="px-4 py-2 bg-bg-secondary text-text-primary rounded-lg hover:bg-bg-hover transition-colors"
+          >
+            취소
+          </button>
+          <button
+            on:click={startEmergencyCountdown}
+            disabled={emergencyReason.trim().length < 10 || emergencyInProgress}
+            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {emergencyInProgress ? '처리 중...' : '해제 시작 (30초 대기)'}
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <!-- Help Modal -->
 <HelpModal show={showHelp} title="설정 도움말" on:close={() => showHelp = false}>

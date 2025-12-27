@@ -125,6 +125,7 @@ export const api = {
   getFocusSettings: () => request('/focus'),
   getFocusStatus: () => request('/focus/status'),
   updateFocusSettings: (tagId, data) => request(`/focus/${tagId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  emergencyResetFocus: (reason) => request('/focus/emergency-reset', { method: 'POST', body: JSON.stringify({ reason }) }),
 
   // System
   exitApp: () => request('/system/exit', { method: 'POST' }),

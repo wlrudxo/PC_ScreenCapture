@@ -371,3 +371,29 @@ class ActivityLogGenerator:
             self.generate_monthly_log(prev_month.year, prev_month.month)
         # 로그 생성 스레드에서 열린 DB 연결 정리
         self.db.close()
+
+    def log_emergency_reset(self, reset_tags: List[str], reason: str):
+        """
+        긴급 해제 로그 기록
+
+        Args:
+            reset_tags: 해제된 태그 이름 목록
+            reason: 해제 사유
+        """
+        now = datetime.now()
+        log_lines = [
+            f"[긴급해제] {now.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"해제된 태그: {', '.join(reset_tags) if reset_tags else '없음'}",
+            f"사유: {reason}",
+            ""
+        ]
+
+        # recent.log에 추가
+        recent_log_path = AppConfig.get_recent_log_path()
+        try:
+            existing = recent_log_path.read_text(encoding='utf-8') if recent_log_path.exists() else ""
+            # 맨 앞에 추가
+            new_content = "\n".join(log_lines) + "\n" + existing
+            recent_log_path.write_text(new_content, encoding='utf-8')
+        except Exception as e:
+            print(f"[LogGenerator] 긴급해제 로그 기록 오류: {e}")

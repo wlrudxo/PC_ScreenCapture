@@ -2,22 +2,12 @@
   import { onMount, onDestroy } from 'svelte';
   import { link, location } from 'svelte-spa-router';
   import { connectWebSocket, disconnectWebSocket, wsConnected } from '../stores/websocket.js';
+  import { theme } from '../stores/theme.js';
   import Toast from './Toast.svelte';
 
-  let appIconSrc = '';
-  let iconLoadFailed = false;
-
-  function resolveAppIconSrc() {
-    if (typeof window === 'undefined') return '';
-    if (window.location.protocol === 'file:') {
-      return new URL('../../resources/icon.png', window.location.href).href;
-    }
-    return '/resources/icon.png';
-  }
-
   onMount(() => {
+    theme.init();
     connectWebSocket();
-    appIconSrc = resolveAppIconSrc();
   });
 
   onDestroy(() => {
@@ -44,26 +34,11 @@
 
 <div class="flex h-screen bg-bg-primary">
   <!-- Sidebar -->
-  <nav class="w-56 bg-bg-secondary border-r border-border flex flex-col">
+  <nav class="w-36 bg-bg-secondary border-r border-border flex flex-col">
     <!-- Logo -->
-    <div class="h-14 flex items-center px-4 border-b border-border">
-      <div class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-          {#if appIconSrc && !iconLoadFailed}
-            <img
-              class="w-5 h-5 object-contain"
-              src={appIconSrc}
-              alt="Activity Tracker icon"
-              on:error={() => (iconLoadFailed = true)}
-            />
-          {:else}
-            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          {/if}
-        </div>
-        <span class="font-semibold text-text-primary">Activity Tracker</span>
-      </div>
+    <div class="h-[70px] flex flex-col items-center justify-center border-b border-border leading-tight">
+      <span class="text-xs text-text-muted tracking-wider">ACTIVITY</span>
+      <span class="text-xl font-bold text-text-primary">Tracker</span>
     </div>
 
     <!-- Navigation Items -->

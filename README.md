@@ -1,6 +1,6 @@
 # Activity Tracker
 
-> PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 시각화하는 개인용 데스크톱 애플리케이션
+> PC 활동을 실시간 추적해 태그별로 자동 분류하고, 통계/알림/집중 모드를 제공하는 Windows 데스크톱 앱
 
 ![Python](https://img.shields.io/badge/Python-3.13-blue.svg)
 ![Svelte](https://img.shields.io/badge/Svelte-Frontend-orange.svg)
@@ -12,43 +12,43 @@
 
 ## 개요
 
-**Activity Tracker**는 Windows PC에서 사용자의 활동을 자동으로 추적하고 분류하는 데스크톱 애플리케이션입니다.
-활성 창, Chrome URL, 화면 잠금 상태를 실시간으로 모니터링하여 태그 기반으로 분류하고, 웹 기반 대시보드로 통계를 제공합니다.
+**Activity Tracker**는 활성 창, Chrome URL, 잠금/유휴 상태를 감지해 활동을 자동 분류하고 통계를 제공하는 PyWebView 기반 앱입니다.
+웹 UI(Svelte)를 내장해 대시보드/타임라인/분석/설정을 제공합니다.
 
 ### 핵심 기능
 
-- **실시간 활동 모니터링** (2초 간격)
-  - Windows 활성 창 자동 감지
-  - Chrome URL 추적 (WebSocket 기반 확장 프로그램)
-  - 화면 잠금/Idle 상태 감지
+- **실시간 활동 모니터링**
+  - Windows 활성 창 감지
+  - Chrome URL/프로필 추적 (선택)
+  - 화면 잠금/Idle 감지
 
-- **우선순위 기반 자동 태그 분류**
-  - 프로세스명, 창 제목, URL 패턴 매칭
-  - 와일드카드 패턴 지원 (`*youtube.com*`, `*.pdf`)
-  - Chrome 프로필별 분류 가능
+- **자동 태그 분류**
+  - 프로세스/URL/창 제목/경로 패턴 매칭
+  - 우선순위 기반 룰 적용
+  - Chrome 프로필 매칭 지원
 
-- **통계 및 시각화**
-  - 태그별 사용 시간 대시보드 (파이/바 차트)
-  - 시간대별 타임라인 바 시각화
-  - 기간별 분석 및 목표 대비 달성률
+- **통계 및 분석**
+  - 일간 대시보드 + 시간대별 차트
+  - 기간 분석 + 목표 달성 지표
+  - 프로세스/웹사이트 TOP
 
 - **알림 시스템**
   - 태그별 토스트 알림
-  - 커스텀 사운드 (다중, 랜덤)
-  - 히어로 이미지 지원 (다중, 랜덤)
+  - 커스텀 사운드/이미지 (단일/랜덤)
+  - 태그별 쿨다운
 
 - **집중 모드**
-  - 태그별 창 최소화 (방해 차단)
-  - 시간대 설정 (예: 09:00~18:00)
-  - 변경 방지 (차단 시간 중 설정 잠금)
+  - 태그 기반 창 자동 최소화
+  - 시간대 설정 + 활성 시간 동안 변경 잠금
+
+- **데이터 관리**
+  - DB 백업/복원
+  - 룰 내보내기/가져오기(병합/교체)
+  - 미분류 재분류/삭제
 
 - **활동 로그 자동 생성**
-  - daily/monthly 로그 파일
+  - daily/monthly 로그
   - recent.log (LLM 분석용)
-
-- **백그라운드 실행**
-  - 시스템 트레이 상주 (pystray)
-  - 닫기 시 트레이로 숨김
 
 ---
 
@@ -103,33 +103,51 @@ python main_webview.pyw --dev
 
 개발 모드에서는 `http://localhost:5173`의 Vite 서버를 사용합니다.
 
-### 트러블슈팅
+---
+
+## Chrome 확장 프로그램 설치 (선택)
+
+Chrome URL을 추적하려면 확장 프로그램을 설치하세요:
+
+1. `chrome://extensions/` 접속
+2. **개발자 모드** 활성화
+3. **압축해제된 확장 프로그램을 로드합니다** 클릭
+4. `chrome_extension` 폴더 선택
+
+> 확장 프로그램이 없어도 활성 창 추적은 정상 작동합니다.
+
+---
+
+## 데이터 저장 위치
+
+- **개발 모드**: 프로젝트 폴더에 DB/로그 저장
+- **빌드 모드**: `%APPDATA%\ActivityTracker`에 저장
+
+로그:
+- `activity_logs/daily/*.log`
+- `activity_logs/monthly/*.log`
+- `activity_logs/recent.log`
+
+---
+
+## 트러블슈팅
 
 **Q: `npm install` 실패**
 ```bash
-# Node.js 버전 확인 (18+ 필요)
 node --version
-
-# npm 캐시 정리 후 재시도
 npm cache clean --force
 cd webui && npm install
 ```
 
 **Q: `python main_webview.pyw` 실행 시 모듈 에러**
 ```bash
-# 가상환경이 활성화되어 있는지 확인
 venv\Scripts\activate
-
-# 의존성 재설치
 pip install -r requirements.txt
 ```
 
 **Q: 빈 화면만 보임**
 ```bash
-# dist 폴더가 있는지 확인
 dir webui\dist
-
-# 없으면 빌드 필요
 cd webui && npm run build
 ```
 
@@ -137,33 +155,9 @@ cd webui && npm run build
 
 Windows 알림 설정을 확인하세요:
 
-1. **앱별 알림 설정 확인**
-   - 설정 → 시스템 → 알림 → Activity Tracker(또는 Python) 찾기
-   - **"알림 배너 표시"** 토글이 켜져 있는지 확인
-
-2. **방해 금지 모드 확인**
-   - 설정 → 시스템 → 알림 → **방해 금지(집중 지원)** 가 꺼져 있는지 확인
-   - 자동 규칙(게임 중, 전체 화면 등)도 확인
-
-3. **전체 화면 모드**
-   - 알림이 나갈 때 전체 화면 앱/게임이 실행 중이면 알림이 표시되지 않을 수 있음
-
-4. **알림 센터에서 확인**
-   - 알림 센터(Win+N)에서 Activity Tracker 알림 우클릭 → "알림 설정으로 이동"
-   - 배너 표시 토글 다시 확인
-
-
-### Chrome 확장 프로그램 설치 (선택)
-
-Chrome URL을 추적하려면 확장 프로그램을 설치해야 합니다:
-
-1. Chrome 주소창에 `chrome://extensions/` 입력
-2. 우측 상단 **개발자 모드** 활성화
-3. **압축해제된 확장 프로그램을 로드합니다** 클릭
-4. `chrome_extension` 폴더 선택
-5. 확장 프로그램 아이콘 클릭 → 프로필명 입력 (선택)
-
-> 확장 프로그램이 없어도 활성 창 추적은 정상 작동합니다.
+1. 설정 → 시스템 → 알림 → Activity Tracker(또는 Python) 알림 켜기
+2. 방해 금지(집중 지원) 확인
+3. 전체 화면 앱 실행 시 알림이 표시되지 않을 수 있음
 
 ---
 
@@ -171,88 +165,56 @@ Chrome URL을 추적하려면 확장 프로그램을 설치해야 합니다:
 
 ```
 PC_ScreenCapture/
-├── main_webview.pyw             # 앱 진입점 (PyWebView + pystray, 콘솔 없음)
+├── main_webview.pyw             # 앱 진입점 (PyWebView + pystray)
 ├── requirements.txt             # Python 의존성
-├── ARCHITECTURE.md              # 상세 아키텍처 문서
-├── CLAUDE.md                    # 프로젝트 컨텍스트
-│
+├── ARCHITECTURE.md              # 아키텍처 문서
 ├── backend/                     # Python 백엔드
-│   ├── api_server.py            # FastAPI REST/WebSocket 서버
-│   ├── monitor_engine_thread.py # 모니터링 스레드 (threading)
-│   ├── database.py              # SQLite 매니저 (WAL, thread-safe)
+│   ├── api_server.py            # FastAPI REST/WS
+│   ├── monitor_engine_thread.py # 모니터링 스레드
+│   ├── database.py              # SQLite 매니저 (WAL)
 │   ├── rule_engine.py           # 룰 매칭 엔진
-│   ├── window_tracker.py        # 활성 창 감지 (ctypes)
+│   ├── window_tracker.py        # 활성 창 감지
 │   ├── screen_detector.py       # 잠금/idle 감지
-│   ├── chrome_receiver.py       # WebSocket 서버 (Chrome)
-│   ├── notification_manager.py  # 토스트/사운드/이미지 알림
+│   ├── chrome_receiver.py       # Chrome WebSocket 수신
+│   ├── notification_manager.py  # 토스트/사운드/이미지
 │   ├── focus_blocker.py         # 집중 모드 (창 최소화)
 │   ├── log_generator.py         # 활동 로그 생성
+│   ├── import_export.py         # DB/룰 백업/복원
+│   ├── auto_start.py            # 자동 시작 레지스트리
 │   └── config.py                # 경로/설정 관리
-│
 ├── webui/                       # Svelte 웹 UI
 │   ├── src/
 │   │   ├── pages/               # 페이지 컴포넌트
-│   │   │   ├── Dashboard.svelte
-│   │   │   ├── Timeline.svelte
-│   │   │   ├── Analysis.svelte
-│   │   │   ├── TagManagement.svelte
-│   │   │   ├── Notification.svelte
-│   │   │   ├── Focus.svelte
-│   │   │   └── Settings.svelte
-│   │   ├── lib/
-│   │   │   ├── api/client.js    # API 클라이언트
-│   │   │   └── stores/          # Svelte stores
+│   │   ├── lib/                 # API/stores/components/utils
 │   │   └── App.svelte
 │   └── dist/                    # 빌드 결과물
-│
 ├── chrome_extension/            # Chrome 확장 (Manifest V3)
-│
-└── legacy_pyqt/                 # PyQt6 레거시 (아카이브)
+└── legacy_pyqt/                 # PyQt6 레거시
 ```
 
-상세 아키텍처는 [`ARCHITECTURE.md`](ARCHITECTURE.md) 참고
+상세 아키텍처는 `ARCHITECTURE.md` 참고.
 
 ---
 
 ## 기술 스택
 
 **Backend**
-- Python 3.13
-- FastAPI + Uvicorn (REST API, WebSocket)
-- SQLite3 (WAL 모드)
-- threading (모니터링 스레드)
-- ctypes (Windows API)
-- psutil (프로세스 정보)
-- windows-toasts (토스트 알림)
+- Python 3.x
+- FastAPI + Uvicorn
+- SQLite (WAL)
+- threading / asyncio
+- ctypes / psutil
+- windows-toasts / winsound
 
 **Frontend**
 - Svelte + Vite
 - TailwindCSS
-- Chart.js (차트)
+- Chart.js
 
 **Desktop**
-- PyWebView (네이티브 윈도우)
-- pystray (시스템 트레이)
+- PyWebView (EdgeChromium)
+- pystray
 
 **Chrome Extension**
 - Manifest V3
-- WebSocket 클라이언트
-
----
-
-## 보안 및 프라이버시
-
-- 모든 데이터 로컬 저장 (외부 전송 없음)
-- WebSocket은 localhost만 허용
-- Chrome Extension도 로컬 연결만 사용
-- 오픈소스 (코드 검증 가능)
-
----
-
-## 라이선스
-
-이 프로젝트는 개인 학습 및 사용 목적으로 제작되었습니다.
-
----
-
-**Made with ❤️ for personal productivity tracking**
+- WebSocket client

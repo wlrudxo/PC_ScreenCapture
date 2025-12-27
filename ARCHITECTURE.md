@@ -1,18 +1,16 @@
-# Activity Tracker - Architecture (WebUI)
+# Activity Tracker - Architecture
 
 ## Overview
 
-Windows 데스크톱 활동 추적 애플리케이션. 활성 창, Chrome URL, 화면 잠금/idle 상태를 일정 간격으로 감지해 룰 기반으로 태그를 분류하고, 웹 UI에서 통계/타임라인/설정을 제공한다.
+Activity Tracker는 Windows 데스크톱에서 사용자의 활동을 추적하고 태그 기반으로 분류해 통계와 알림을 제공하는 PyWebView 앱이다. 백엔드는 FastAPI + SQLite로 구성되고, 모니터링 엔진이 활성 창/잠금/유휴/Chrome URL을 감지하여 활동 로그와 통계를 만든다. 웹 UI는 Svelte SPA로 구성되며 PyWebView에서 로드된다.
 
-**Core Features:**
-- 실시간 모니터링 (threading 기반 MonitorEngine)
-- Chrome URL 추적 (WebSocket + Extension)
-- 우선순위 기반 자동 태그 분류
-- 토스트 알림 (사운드/이미지 지원)
+핵심 특징:
+- 활성 창 + Chrome URL + 잠금/유휴 상태 감지
+- 룰 기반 자동 태그 분류 (우선순위, 패턴 매칭)
+- 태그별 알림 (토스트/사운드/이미지)
 - 집중 모드 (태그 + 시간대 기반 창 최소화)
-- 활동 로그 자동 생성 (LLM 분석용)
-- FastAPI + Svelte Web UI (PyWebView 내장)
-- 시스템 트레이 백그라운드 실행
+- 일별/최근/월별 활동 로그 생성
+- DB/룰 백업/복원, 룰 가져오기/내보내기
 
 ---
 
@@ -20,373 +18,213 @@ Windows 데스크톱 활동 추적 애플리케이션. 활성 창, Chrome URL, �
 
 ```
 +------------------------------------------------------------------+
-|                          PyWebView Shell                          |
-|  - main_webview.pyw                                                |
-|  - EdgeChromium backend                                            |
-|  - pystray system tray                                             |
+|                       PyWebView App (main_webview.pyw)            |
+|  - PyWebView window + JS API (backup/export/exit)                 |
+|  - pystray tray icon                                               |
+|  - starts FastAPI server + monitor engine                          |
 +-------------------------------+----------------------------------+
-                                | loads
-+-------------------------------v----------------------------------+
-|                         Web UI (Svelte SPA)                       |
-|  Routes: Dashboard / Timeline / Analysis / Tags / Alerts / Focus  |
-|  - REST: /api/*                                                     |
-|  - WS:  /ws/activity                                                |
-+-------------------------------+----------------------------------+
+                                |
                                 | HTTP + WebSocket
 +-------------------------------v----------------------------------+
 |                          FastAPI API Server                        |
-|  - api_server.py                                                   |
-|  - static: webui/dist                                               |
-|  - REST + WebSocket                                                 |
+|  - REST: /api/*                                                     |
+|  - WS:   /ws/activity                                               |
+|  - Static: webui/dist (SPA)                                         |
 +-------------------------------+----------------------------------+
                                 | runtime engines
 +-------------------------------v----------------------------------+
-|                         Backend Core (Threading)                   |
-|  MonitorEngineThread                                              |
-|   + WindowTracker (ctypes + psutil)                               |
+|                        Backend Runtime (threading)                |
+|  MonitorEngineThread                                               |
+|   + WindowTracker (ctypes + psutil)                                |
 |   + ScreenDetector (lock/idle)                                     |
 |   + ChromeURLReceiver (WebSocket server :8766)                     |
 |   + NotificationManager (windows-toasts + winsound)                |
 |   + FocusBlocker (window minimize)                                 |
 |  RuleEngine (priority-based matching)                              |
-|  DatabaseManager (thread-local SQLite WAL)                         |
 |  ActivityLogGenerator (daily/recent/monthly logs)                  |
-|  ImportExportManager (DB/rule backup/restore)                      |
+|  ImportExportManager (DB + rule backup/restore)                    |
+|  DatabaseManager (thread-local SQLite, WAL)                        |
 +-------------------------------+----------------------------------+
                                 |
 +-------------------------------v----------------------------------+
-|                     SQLite Database (WAL)                          |
-|  tags, activities, rules, settings,                                |
-|  alert_sounds, alert_images                                        |
+|                         SQLite Database (WAL)                      |
+|  tags, activities, rules, settings, alert_sounds, alert_images      |
 +------------------------------------------------------------------+
 
 +-----------------------------------------------------------+
-|              Chrome Extension (Manifest V3)                |
-|  WebSocket client (ws://localhost:8766)                    |
-|  Active tab URL/profile push + auto-reconnect              |
+|                Chrome Extension (Manifest V3)             |
+|  WebSocket client (ws://localhost:8766)                   |
+|  Active tab URL/profile push + auto-reconnect             |
 +-----------------------------------------------------------+
 ```
 
 ---
 
-## Directory Structure
+## Runtime Components
 
-```
-PC_ScreenCapture/
-+-- main_webview.pyw             # Entry point (PyWebView)
-+-- backend/
-|   +-- api_server.py            # FastAPI REST + WS
-|   +-- monitor_engine_thread.py # Monitor loop (threading)
-|   +-- window_tracker.py        # Active window detection
-|   +-- screen_detector.py       # Lock/idle detection
-|   +-- chrome_receiver.py       # WebSocket server (Chrome)
-|   +-- rule_engine.py           # Rule matching engine
-|   +-- database.py              # SQLite manager (WAL)
-|   +-- notification_manager.py  # Toast + sound/image
-|   +-- focus_blocker.py         # Focus mode window minimize
-|   +-- log_generator.py         # Activity log generation
-|   +-- import_export.py         # DB/rule import/export
-|   +-- auto_start.py            # Windows auto-start registry
-|   +-- config.py                # Path/settings (dev vs build)
-|
-+-- webui/                       # Svelte SPA (latest UI)
-|   +-- src/                     # UI source
-|   +-- dist/                    # Production build (served by FastAPI)
-|
-+-- chrome_extension/            # Manifest V3 extension
-+
-+-- legacy_pyqt/                 # Legacy PyQt implementation
-+-- ui/                          # Legacy PyQt UI modules
-+-- activity_logs/               # Dev-mode log output (created at runtime)
-```
+### main_webview.pyw
+- FastAPI 서버를 별도 스레드로 기동하고 모니터링 엔진을 실행.
+- PyWebView JS API 제공: DB 백업/룰 내보내기 저장 다이얼로그, 앱 종료.
+- 트레이 아이콘(열기/종료)과 단일 인스턴스 보장(Windows mutex + 포트 체크).
+- DB 복원 예약이 있으면 앱 시작 전에 교체 적용.
 
----
+### FastAPI (backend/api_server.py)
+- REST + WebSocket API 제공.
+- 룰/집중 모드 변경 시 런타임 엔진에 reload 요청.
+- 로그 보관 설정 변경 시 최근 로그 재생성.
+- 빌드/개발 환경 모두에서 `webui/dist` 정적 파일 서빙 (SPA fallback).
 
-## Database Schema
+### MonitorEngineThread (backend/monitor_engine_thread.py)
+- 폴링 간격/idle 임계값은 settings 테이블에서 매 루프 갱신.
+- 활동 변경 시 기존 활동 종료, 새 활동 생성, 알림 및 차단 처리.
+- 날짜 변경 감지 시 로그 생성(일별 + recent).
+- DB 복원을 위한 일시정지/DB 연결 닫기 요청 지원.
 
-### `tags`
-```sql
-CREATE TABLE tags (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    color TEXT NOT NULL,
-    category TEXT DEFAULT 'other',
-    alert_enabled BOOLEAN DEFAULT 0,
-    alert_message TEXT,
-    alert_cooldown INTEGER DEFAULT 30,
-    block_enabled BOOLEAN DEFAULT 0,
-    block_start_time TEXT,
-    block_end_time TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-Default tags: 업무(#4CAF50), 딴짓(#FF5722), 자리비움(#9E9E9E), 미분류(#607D8B)
+### RuleEngine (backend/rule_engine.py)
+- enabled 룰을 우선순위 내림차순으로 적용.
+- process/url/title/profile/path 중 하나라도 일치하면 매칭(OR).
+- 패턴은 콤마 분리 + fnmatch 와일드카드(`*`, `?`).
 
-### `activities`
-```sql
-CREATE TABLE activities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP,
-    process_name TEXT,
-    window_title TEXT,
-    chrome_profile TEXT,
-    chrome_url TEXT,
-    tag_id INTEGER,
-    rule_id INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE SET NULL,
-    FOREIGN KEY (rule_id) REFERENCES rules(id) ON DELETE SET NULL
-);
--- Indexes: idx_activities_time, idx_activities_tag, idx_activities_process
-```
+### DatabaseManager (backend/database.py)
+- 스레드별 SQLite 연결 + WAL 모드.
+- 기본 태그 시드: 업무, 휴식, 자리비움, 미분류.
+- 알림 이미지/사운드 기본 리소스 시드.
+- settings, tags, rules, activities, alert_sounds, alert_images 관리.
 
-### `rules`
-```sql
-CREATE TABLE rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    priority INTEGER DEFAULT 0,
-    enabled BOOLEAN DEFAULT 1,
-    process_pattern TEXT,
-    url_pattern TEXT,
-    window_title_pattern TEXT,
-    chrome_profile TEXT,
-    process_path_pattern TEXT,
-    tag_id INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-);
-```
-- Priority-based sequential matching
-- Multiple patterns with comma separator
-- Wildcard support (`*`, `?`) via fnmatch
+### NotificationManager (backend/notification_manager.py)
+- windows-toasts 기반 토스트 표시(히어로 이미지 지원).
+- 사운드는 별도 스레드에서 재생, 태그별 쿨다운 적용.
 
-### `settings`
-```sql
-CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-```
-Key settings: `alert_toast_enabled`, `alert_sound_enabled`, `alert_sound_mode`, `alert_sound_selected`, `alert_image_enabled`, `alert_image_mode`, `alert_image_selected`, `polling_interval`, `idle_threshold`, `log_retention_days`, `target_distraction_ratio`
+### FocusBlocker (backend/focus_blocker.py)
+- 태그별 차단 시간대를 확인하고 해당 창을 최소화.
+- 자정 넘김 시간대 지원(예: 22:00~02:00).
 
-### `alert_sounds`
-```sql
-CREATE TABLE alert_sounds (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+### ActivityLogGenerator (backend/log_generator.py)
+- `activity_logs/daily/*.log`, `recent.log`, `monthly/*.log` 생성.
+- 보관 일수는 `log_retention_days` 설정 사용.
 
-### `alert_images`
-```sql
-CREATE TABLE alert_images (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+### ImportExportManager (backend/import_export.py)
+- SQLite backup API로 DB 백업.
+- 복원 시 무결성 검사 + WAL 정리 + 롤백 지원.
+- 룰 JSON 내보내기/가져오기(병합/교체 모드).
 
 ---
 
-## Backend Modules
+## Web UI (Svelte SPA)
 
-### `monitor_engine_thread.py` - MonitorEngineThread
+- 라우팅: `/`(Dashboard), `/timeline`, `/analysis`, `/tags`, `/notification`, `/focus`, `/settings`
+- API 베이스:
+  - `file://` 로딩 시 `http://127.0.0.1:8000/api`
+  - 개발 서버/프로덕션 HTTP에서는 상대 경로 `/api`
+- WebSocket 연결:
+  - `file://` → `ws://127.0.0.1:8000/ws/activity`
+  - HTTP(S) → 동일 호스트의 `/ws/activity`
 
-Threading 기반 모니터링 루프. 폴링 간격 및 idle 임계값은 settings에서 동적으로 로드.
-
-```python
-class MonitorEngineThread(threading.Thread):
-    DEFAULT_POLLING_INTERVAL = 2
-    DEFAULT_IDLE_THRESHOLD = 300
-
-    def run(self):
-        while not self._stop_event.is_set():
-            activity_info = self.collect_activity_info()
-            if self._is_activity_changed(activity_info):
-                self.end_current_activity()
-                self.start_new_activity(activity_info)
-            else:
-                self._check_tag_alert(self.current_tag_id)
-                self.focus_blocker.check_and_block(self.current_tag_id, hwnd)
-            self._stop_event.wait(timeout=polling_interval)
-```
-
-**Activity collection priority:**
-1. `is_locked()` -> `__LOCKED__`
-2. `get_idle_duration() > idle_threshold` -> `__IDLE__`
-3. Normal activity -> WindowTracker + ChromeURLReceiver
-
-### `focus_blocker.py` - FocusBlocker
-
-Tag + 시간대 기반 창 최소화. 시간대가 설정된 태그만 차단 대상.
-
-```python
-class FocusBlocker:
-    def is_blocked(self, tag_id: int) -> bool:
-        # block_enabled + time range 체크
-
-    def check_and_block(self, tag_id: int, hwnd: int) -> bool:
-        if self.is_blocked(tag_id):
-            windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
-            return True
-        return False
-```
-
-### `notification_manager.py` - NotificationManager
-
-Windows 토스트 + 사운드/이미지 알림.
-
-```python
-class NotificationManager:
-    # windows-toasts 사용 (AUMID: ActivityTracker)
-    def show(self, tag_id, title, message, cooldown=None):
-        if self._can_notify(tag_id, cooldown):
-            self._show_toast(message)           # Hero image 지원
-            self._play_custom_sound()           # 별도 스레드
-```
-
-### `log_generator.py` - ActivityLogGenerator
-
-활동 로그 생성 (일별/최근/월별). 보관 일수는 settings `log_retention_days` 사용.
-
-```python
-class ActivityLogGenerator:
-    def generate_daily_log(self, date) -> str:
-        # 압축 포맷: 요약/태그/프로세스/웹사이트/시간대
-    def generate_recent_log(self):
-        # 최근 N일 통합
-    def generate_monthly_log(self, year, month):
-        # 월별 아카이브
-```
-
-### `api_server.py` - FastAPI
-
-REST + WebSocket API, Web UI 정적 파일 서빙.
-
-- REST: dashboard/timeline/analysis/tags/rules/settings/alerts/focus/import-export
-- WS: `/ws/activity` (실시간 활동 이벤트)
-- Static: `/` and `/assets` from `webui/dist`
-
----
-
-## Frontend (Web UI)
-
-Svelte + Vite 기반 SPA (`webui/`). `svelte-spa-router`로 라우팅.
-
-Routes:
-- `/` Dashboard
-- `/timeline` Timeline
-- `/analysis` Analysis
-- `/tags` Tag Management
-- `/notification` Alert Settings
-- `/focus` Focus Mode
-- `/settings` General Settings
-
-Web UI는 FastAPI REST를 통해 데이터 조회/갱신, `/ws/activity`로 실시간 활동 업데이트 수신.
+페이지 기능 요약:
+- Dashboard: 일간 통계 + 시간대별 차트(Chart.js)
+- Timeline: 날짜/태그 필터, 타임라인 바 + 테이블
+- Analysis: 기간 분석, 목표 달성 지표, 태그/프로세스/웹사이트 TOP
+- Tag Management: 태그/룰 CRUD, 미분류 재분류, 미분류 삭제
+- Notification: 알림 설정, 사운드/이미지 업로드, 태그별 알림 설정
+- Focus: 태그별 차단 시간 설정 및 활성화 상태 표시
+- Settings: 앱 설정, 자동 시작, 백업/복원, 룰 가져오기/내보내기
 
 ---
 
 ## Data Flow
 
-### 1. Activity Tracking Loop
-
+### 1) Activity Tracking Loop
 ```
 MonitorEngineThread.run() [polling_interval]
   -> collect_activity_info()
-       +-- is_locked() -> __LOCKED__?
-       +-- get_idle_duration() > idle_threshold -> __IDLE__?
-       +-- get_active_window() + get_latest_url()
-  -> _is_activity_changed()?
-       YES: end_current_activity() + start_new_activity()
-            -> rule_engine.match() -> tag_id, rule_id
-            -> db_manager.create_activity()
-            -> callback: WebSocket broadcast
-            -> notification + focus block
-       NO:  -> _check_tag_alert() + focus_blocker.check_and_block()
+      1) screen locked -> __LOCKED__
+      2) idle > threshold -> __IDLE__
+      3) active window + optional Chrome URL
+  -> _is_activity_changed() ?
+      YES: end_current_activity() + start_new_activity()
+           -> RuleEngine.match() -> tag_id, rule_id
+           -> DatabaseManager.create_activity()
+           -> NotificationManager + FocusBlocker
+           -> WebSocket broadcast
+      NO:  -> alert + focus re-check
 ```
 
-### 2. Chrome URL Tracking
-
+### 2) Chrome URL Tracking
 ```
 Chrome Extension
-  -> tabs.onActivated / onUpdated / windows.onFocusChanged
-  -> WebSocket.send(JSON)
-     -> ChromeURLReceiver._handler()
-        -> latest_data update (thread lock)
+  -> ws://localhost:8766
+  -> ChromeURLReceiver.latest_data 갱신
+  -> MonitorEngineThread에서 최신 URL 조회
 ```
 
-### 3. Web UI Updates
-
+### 3) Web UI Updates
 ```
-Web UI (Svelte)
-  -> REST /api/* for CRUD + stats
-  -> WS /ws/activity for live activity updates
+Svelte UI
+  -> REST /api/* 조회/수정
+  -> WS /ws/activity 로 실시간 업데이트
 ```
 
-### 4. Alerts + Focus Mode
-
+### 4) Alerts + Focus
 ```
 MonitorEngineThread
-  -> NotificationManager.show() [cooldown 적용]
-  -> FocusBlocker.check_and_block() [시간대 내 최소화]
+  -> NotificationManager.show(tag_id, message)
+  -> FocusBlocker.check_and_block(tag_id, hwnd)
 ```
 
-### 5. Logs & Import/Export
-
+### 5) Backup/Restore
 ```
-ActivityLogGenerator
-  -> daily/*.log + recent.log (+ monthly on demand)
-ImportExportManager
-  -> DB backup/restore, rule JSON import/export
+Settings UI
+  -> DB backup/export: REST or PyWebView JS API
+  -> DB restore: 업로드 후 복원 예약 (앱 재시작 시 적용)
 ```
 
 ---
 
-## Technical Notes
+## Database Schema (요약)
 
-### Thread Safety
-- DatabaseManager: thread-local SQLite connections, WAL mode
-- ChromeURLReceiver: lock으로 latest_data 보호
-- MonitorEngineThread: 독립 스레드 루프
-- NotificationManager: 사운드는 별도 스레드
+### tags
+- `name`(unique), `color`, `category`(work/non_work/other)
+- 알림: `alert_enabled`, `alert_message`, `alert_cooldown`
+- 집중 모드: `block_enabled`, `block_start_time`, `block_end_time`
 
-### Toast Requirements
-- Library: `windows-toasts` (AUMID: `ActivityTracker`)
-- Hero image: 2:1 비율로 리사이즈 (364x182)
+### activities
+- `start_time`, `end_time`, `process_name`, `window_title`
+- `chrome_url`, `chrome_profile`, `tag_id`, `rule_id`
 
-### App Paths
-- Dev: 프로젝트 폴더에 DB/로그 저장
-- Build: `%APPDATA%/ActivityTracker` 저장
+### rules
+- `priority`, `enabled`
+- 패턴: `process_pattern`, `url_pattern`, `window_title_pattern`, `process_path_pattern`
+- `chrome_profile`, `tag_id`
 
-### Web UI Serving
-- Dev mode: Vite dev server (`--dev` → http://localhost:5173)
-- Prod: FastAPI에서 `webui/dist` 정적 서빙
+### settings
+- 알림: `alert_toast_enabled`, `alert_sound_enabled`, `alert_sound_mode`, `alert_sound_selected`,
+  `alert_image_enabled`, `alert_image_mode`, `alert_image_selected`
+- 모니터링: `polling_interval`, `idle_threshold`
+- 로그/분석: `log_retention_days`, `target_daily_hours`, `target_distraction_ratio`
+
+### alert_sounds / alert_images
+- 사용자 업로드된 알림 사운드/이미지 목록
 
 ---
 
 ## Tech Stack
 
-**Backend:**
-- Python 3.x, SQLite3 (WAL)
+Backend:
+- Python 3.x, SQLite (WAL)
 - FastAPI, Uvicorn, websockets
 - threading, asyncio
 - ctypes (Windows API), psutil
-- windows-toasts, winsound, pystray
-- pywebview (EdgeChromium)
+- windows-toasts, winsound
 
-**Frontend:**
-- Svelte + Vite, svelte-spa-router
+Frontend:
+- Svelte + Vite
+- TailwindCSS
 - Chart.js
 
-**Chrome Extension:**
-- Manifest V3, WebSocket
+Desktop:
+- PyWebView (EdgeChromium)
+- pystray
 
-**Build:**
-- PyInstaller
+Chrome Extension:
+- Manifest V3
+- WebSocket client

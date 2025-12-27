@@ -5,6 +5,7 @@
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
   import HelpModal from '../lib/components/HelpModal.svelte';
   import HelpButton from '../lib/components/HelpButton.svelte';
+  import { getContrastingTextColor } from '../lib/utils/color.js';
 
   let loading = true;
   let showHelp = false;
@@ -461,8 +462,8 @@
               <td class="px-3 py-3 text-sm text-text-primary font-medium truncate" title={rule.name}>{rule.name}</td>
               <td class="px-3 py-3">
                 <span
-                  class="inline-block px-2 py-0.5 rounded text-xs font-medium text-white whitespace-nowrap"
-                  style="background-color: {rule.tag?.color || '#607D8B'}"
+                  class="inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap"
+                  style="background-color: {rule.tag?.color || '#607D8B'}; color: {getContrastingTextColor(rule.tag?.color || '#607D8B')}"
                 >
                   {rule.tag?.name || rule.tag_name || '미분류'}
                 </span>

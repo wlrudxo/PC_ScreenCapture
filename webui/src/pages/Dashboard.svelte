@@ -189,7 +189,9 @@
               grid: { color: '#333' },
               ticks: { color: '#888' },
               title: { display: true, text: '분', color: '#888' },
-              beginAtZero: true
+              beginAtZero: true,
+              max: 60,
+              grace: '10%'
             }
           },
           plugins: {
@@ -331,9 +333,9 @@
     </div>
 
     <!-- Hourly Distribution (Bar) -->
-    <div class="col-span-2 bg-bg-card rounded-xl p-5 border border-border">
+    <div class="col-span-2 bg-bg-card rounded-xl p-5 border border-border flex flex-col">
       <h2 class="text-lg font-semibold text-text-primary mb-4">시간대별 활동</h2>
-      <div class="h-64">
+      <div class="flex-1 min-h-[18rem]">
         <canvas id="hourlyBarChart"></canvas>
       </div>
     </div>

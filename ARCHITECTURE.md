@@ -1,4 +1,4 @@
-# Activity Tracker V2 - Architecture (WebUI)
+# Activity Tracker - Architecture (WebUI)
 
 ## Overview
 

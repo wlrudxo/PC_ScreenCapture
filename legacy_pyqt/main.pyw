@@ -1,5 +1,5 @@
 """
-활동 추적 시스템 V2 - 프로덕션 진입점 (터미널 없이 실행)
+Activity Tracker - 프로덕션 진입점 (터미널 없이 실행)
 """
 import sys
 from PyQt6.QtWidgets import QApplication

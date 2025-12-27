@@ -1,4 +1,4 @@
-# Activity Tracker V2
+# Activity Tracker
 
 ## 프로젝트 소개
 

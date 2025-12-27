@@ -14,7 +14,7 @@ class AutoStartManager:
     레지스트리 키를 추가/삭제하여 자동 시작 설정
     """
 
-    APP_NAME = "ActivityTrackerV2"
+    APP_NAME = "ActivityTracker"
     REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
     @staticmethod

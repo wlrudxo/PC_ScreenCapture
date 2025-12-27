@@ -12,7 +12,7 @@
 4. "압축해제된 확장 프로그램을 로드합니다" 클릭
 
 5. 이 폴더 선택:
-   H:\GitProject\PC_ScreenCapture_V2\chrome_extension
+   H:\GitProject\PC_ScreenCapture\chrome_extension
 
 6. 확장 프로그램 설치 완료!
 

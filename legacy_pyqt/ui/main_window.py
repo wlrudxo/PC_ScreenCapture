@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         # 윈도우 설정
-        self.setWindowTitle("활동 추적 시스템 V2")
+        self.setWindowTitle("Activity Tracker")
         self.setGeometry(100, 100, 1200, 800)
 
         # 백엔드 초기화
@@ -178,7 +178,7 @@ class MainWindow(QMainWindow):
             # 트레이 알림 (첫 번째만)
             if not hasattr(self, '_tray_notified'):
                 self.tray_icon.show_message(
-                    "활동 추적 시스템 V2",
+                    "Activity Tracker",
                     "백그라운드에서 실행 중입니다.\nShift를 누른 채로 닫으면 완전히 종료됩니다."
                 )
                 self._tray_notified = True

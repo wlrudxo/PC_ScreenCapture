@@ -33,7 +33,7 @@ class SystemTrayIcon(QObject):
             self.tray_icon.setIcon(icon)
 
         # 툴팁 설정
-        self.tray_icon.setToolTip("활동 추적 시스템 V2")
+        self.tray_icon.setToolTip("Activity Tracker")
 
         # 컨텍스트 메뉴 생성
         self.create_menu()

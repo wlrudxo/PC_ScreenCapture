@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
+  import { getContrastingTextColor } from '../lib/utils/color.js';
   import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate } from '../lib/stores/app.js';
   import { activityUpdated } from '../lib/stores/websocket.js';
 
@@ -264,8 +265,8 @@
                 </td>
                 <td class="px-4 py-3">
                   <span
-                    class="block w-full text-center px-2 py-0.5 rounded text-xs font-medium text-white truncate"
-                    style="background-color: {activity.tag.color}"
+                    class="block w-full text-center px-2 py-0.5 rounded text-xs font-medium truncate"
+                    style="background-color: {activity.tag.color}; color: {getContrastingTextColor(activity.tag.color)}"
                     title={activity.tag.name}
                   >
                     {activity.tag.name}

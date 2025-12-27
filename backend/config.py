@@ -29,7 +29,7 @@ class AppConfig:
         애플리케이션 데이터 디렉토리
 
         개발 모드:
-            H:\\GitProject\\PC_ScreenCapture_V2\\
+            H:\\GitProject\\PC_ScreenCapture\\
 
         빌드 모드:
             C:\\Users\\User\\AppData\\Roaming\\ActivityTracker\\

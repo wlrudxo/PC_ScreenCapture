@@ -47,6 +47,16 @@
   let showExitModal = false;
   let exitInProgress = false;
   let activeBlocks = [];
+  let appIconSrc = '';
+  let iconLoadFailed = false;
+
+  function resolveAppIconSrc() {
+    if (typeof window === 'undefined') return '';
+    if (window.location.protocol === 'file:') {
+      return new URL('../../resources/icon.png', window.location.href).href;
+    }
+    return '/resources/icon.png';
+  }
 
   async function loadData() {
     loading = true;
@@ -256,7 +266,10 @@
     activeBlocks = [];
   }
 
-  onMount(loadData);
+  onMount(() => {
+    appIconSrc = resolveAppIconSrc();
+    loadData();
+  });
 </script>
 
 <!-- Hidden file inputs -->
@@ -498,12 +511,21 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
         <div class="w-12 h-12 rounded-xl bg-accent flex items-center justify-center">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
+          {#if appIconSrc && !iconLoadFailed}
+            <img
+              class="w-7 h-7 object-contain"
+              src={appIconSrc}
+              alt="Activity Tracker icon"
+              on:error={() => (iconLoadFailed = true)}
+            />
+          {:else}
+            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          {/if}
         </div>
         <div>
-          <div class="font-semibold text-text-primary">Activity Tracker V2</div>
+          <div class="font-semibold text-text-primary">Activity Tracker</div>
           <div class="text-sm text-text-muted">Version 2.0.0</div>
         </div>
       </div>

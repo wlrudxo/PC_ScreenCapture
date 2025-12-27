@@ -1,5 +1,5 @@
 """
-Activity Tracker V2 - PyWebView Edition
+Activity Tracker - PyWebView Edition
 
 PyWebView + FastAPI + pystray 기반 앱
 기존 PyQt6 UI를 웹 UI로 대체
@@ -421,7 +421,7 @@ class ActivityTrackerApp:
 
     def run(self):
         """앱 실행"""
-        print("[App] Starting Activity Tracker V2 (PyWebView Edition)")
+        print("[App] Starting Activity Tracker (PyWebView Edition)")
 
         # Reduce noisy pywebview native introspection logs.
         logging.getLogger("pywebview").setLevel(logging.ERROR)
@@ -476,7 +476,7 @@ def is_port_in_use(port: int) -> bool:
 
 def ensure_single_instance() -> bool:
     """중복 실행 방지 (Windows mutex)"""
-    mutex_name = "Global\\ActivityTrackerV2_SingleInstance"
+    mutex_name = "Global\\ActivityTracker_SingleInstance"
     handle = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     if not handle:
         return True  # 실패 시 앱 실행 허용

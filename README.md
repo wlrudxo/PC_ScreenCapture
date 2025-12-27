@@ -1,4 +1,4 @@
-# Activity Tracker V2
+# Activity Tracker
 
 > PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 시각화하는 개인용 데스크톱 애플리케이션
 
@@ -12,7 +12,7 @@
 
 ## 개요
 
-**Activity Tracker V2**는 Windows PC에서 사용자의 활동을 자동으로 추적하고 분류하는 데스크톱 애플리케이션입니다.
+**Activity Tracker**는 Windows PC에서 사용자의 활동을 자동으로 추적하고 분류하는 데스크톱 애플리케이션입니다.
 활성 창, Chrome URL, 화면 잠금 상태를 실시간으로 모니터링하여 태그 기반으로 분류하고, 웹 기반 대시보드로 통계를 제공합니다.
 
 ### 핵심 기능
@@ -170,7 +170,7 @@ Chrome URL을 추적하려면 확장 프로그램을 설치해야 합니다:
 ## 프로젝트 구조
 
 ```
-PC_ScreenCapture_V2/
+PC_ScreenCapture/
 ├── main_webview.pyw             # 앱 진입점 (PyWebView + pystray, 콘솔 없음)
 ├── requirements.txt             # Python 의존성
 ├── ARCHITECTURE.md              # 상세 아키텍처 문서

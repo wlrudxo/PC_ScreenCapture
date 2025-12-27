@@ -1,5 +1,5 @@
 """
-활동 추적 시스템 V2 - 메인 진입점
+Activity Tracker - 메인 진입점
 """
 import sys
 from PyQt6.QtWidgets import QApplication
@@ -11,7 +11,7 @@ from ui.styles import apply_dark_theme
 def main():
     """메인 함수"""
     print("=" * 70)
-    print("활동 추적 시스템 V2 시작")
+    print("Activity Tracker 시작")
     print("=" * 70)
 
     # Qt 애플리케이션 생성

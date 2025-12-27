@@ -13,7 +13,6 @@ import urllib.error
 import threading
 import time
 import asyncio
-import multiprocessing
 import signal
 import webbrowser
 import socket
@@ -109,35 +108,31 @@ sys.stderr = _StreamFilter(sys.stderr, _pywebview_noise)
 from backend.import_export import ImportExportManager
 
 
-def _run_api_server(port: int):
-    import logging
-    import uvicorn
-    from backend.config import AppConfig
-    from backend.api_server import app as fastapi_app
+class ApiServerThread(threading.Thread):
+    """FastAPI 서버를 스레드로 실행 (메인 프로세스 공유)"""
 
-    from logging.handlers import RotatingFileHandler
-    log_path = AppConfig.get_log_path().with_name("api.log")
-    handler = RotatingFileHandler(
-        str(log_path),
-        maxBytes=5*1024*1024,  # 5MB
-        backupCount=3,
-        encoding='utf-8'
-    )
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logging.root.handlers = [handler]
-    logging.root.setLevel(logging.INFO)
+    def __init__(self, app, port: int):
+        super().__init__(daemon=True)
+        self._app = app
+        self._port = port
+        self._server = None
 
-    config = uvicorn.Config(
-        fastapi_app,
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-        access_log=False
-    )
-    if hasattr(config, "handle_signals"):
-        config.handle_signals = False
-    server = uvicorn.Server(config)
-    server.run()
+    def run(self):
+        config = uvicorn.Config(
+            self._app,
+            host="127.0.0.1",
+            port=self._port,
+            log_level="warning",
+            access_log=False
+        )
+        if hasattr(config, "handle_signals"):
+            config.handle_signals = False
+        self._server = uvicorn.Server(config)
+        self._server.run()
+
+    def stop(self):
+        if self._server:
+            self._server.should_exit = True
 
 
 class PyWebViewApi:
@@ -228,8 +223,7 @@ class ActivityTrackerApp:
         self.window = None
         self.tray_icon = None
         self.api_server_thread = None
-        self.api_process = None
-        self.api_pid_path = AppConfig.get_api_pid_path()
+        self._api_pid_path = AppConfig.get_api_pid_path()
         self.monitor_engine = None
         self.db_manager = None
         self.rule_engine = None
@@ -239,7 +233,7 @@ class ActivityTrackerApp:
         # 포트 설정
         self.api_port = 8000
         self.webui_url = self._get_webui_url()
-        self.webview_profile_dir = AppConfig.get_app_dir() / "webview_profile"
+        self._webview_profile_dir = AppConfig.get_app_dir() / "webview_profile"
 
     def _get_webui_url(self) -> str:
         """웹 UI URL 결정"""
@@ -251,18 +245,10 @@ class ActivityTrackerApp:
         return f'http://127.0.0.1:{self.api_port}'
 
     def start_api_server(self):
-        """FastAPI 서버를 별도 프로세스로 실행"""
+        """FastAPI 서버를 스레드로 실행"""
         logging.info("[API Server] Starting...")
-        self.api_process = multiprocessing.Process(
-            target=_run_api_server,
-            args=(self.api_port,),
-            daemon=True
-        )
-        self.api_process.start()
-        try:
-            self.api_pid_path.write_text(str(self.api_process.pid), encoding="utf-8")
-        except Exception as e:
-            logging.error("[API Server] Failed to write PID file: %s", e)
+        self.api_server_thread = ApiServerThread(fastapi_app, self.api_port)
+        self.api_server_thread.start()
         print(f"[API Server] Started on port {self.api_port}")
 
     def start_monitor_engine(self):
@@ -470,12 +456,12 @@ class ActivityTrackerApp:
         if self.window:
             self.window.destroy()
 
-        if self.api_process and self.api_process.is_alive():
-            self.api_process.terminate()
-            self.api_process.join(timeout=3.0)
-        if self.api_pid_path.exists():
+        if self.api_server_thread and self.api_server_thread.is_alive():
+            self.api_server_thread.stop()
+            self.api_server_thread.join(timeout=3.0)
+        if self._api_pid_path.exists():
             try:
-                self.api_pid_path.unlink()
+                self._api_pid_path.unlink()
             except Exception:
                 pass
 
@@ -522,9 +508,9 @@ class ActivityTrackerApp:
         time.sleep(1)  # 서버 시작 대기
         if not self._wait_for_api_ready(timeout=12.0):
             logging.error("[API Server] Health check failed")
-            if self.api_process and self.api_process.is_alive():
-                self.api_process.terminate()
-                self.api_process.join(timeout=3.0)
+            if self.api_server_thread and self.api_server_thread.is_alive():
+                self.api_server_thread.stop()
+                self.api_server_thread.join(timeout=3.0)
             ctypes.windll.user32.MessageBoxW(
                 0,
                 "API server did not respond. Please restart the app.",
@@ -566,7 +552,7 @@ class ActivityTrackerApp:
         webview.start(
             debug=os.environ.get('DEV_MODE') == '1',
             gui='edgechromium',
-            storage_path=str(self.webview_profile_dir)
+            storage_path=str(self._webview_profile_dir)
         )
 
 
@@ -614,8 +600,6 @@ def activate_existing_window() -> bool:
 
 def main():
     """메인 함수"""
-    multiprocessing.freeze_support()
-
     def terminate_pid(pid: int) -> bool:
         if os.name != 'nt':
             try:

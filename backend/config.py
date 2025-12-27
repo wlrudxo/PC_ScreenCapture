@@ -118,3 +118,8 @@ class AppConfig:
     def get_restore_pending_db_path():
         """복원 예약 DB 파일 경로"""
         return AppConfig.get_app_dir() / "restore_pending.db"
+
+    @staticmethod
+    def get_api_pid_path():
+        """API 프로세스 PID 파일 경로"""
+        return AppConfig.get_app_dir() / "api.pid"

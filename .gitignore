@@ -50,3 +50,6 @@ Thumbs.db
 sounds/
 images/
 *.lnk
+
+# PyWebView runtime cache
+webview_profile/

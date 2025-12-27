@@ -4,7 +4,7 @@ SQLite 데이터베이스 관리
 import sqlite3
 import threading
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from backend.config import AppConfig
@@ -191,6 +191,17 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 file_path TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # focus_events 테이블 (집중 모드 관련 이벤트: 긴급해제, 앱 종료 등)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS focus_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                details TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -709,6 +720,37 @@ class DatabaseManager:
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM alert_images WHERE id = ?", (image_id,))
         self.conn.commit()
+
+    # === 집중 모드 이벤트 ===
+    def add_focus_event(self, event_type: str, details: Optional[str] = None) -> int:
+        """
+        집중 모드 이벤트 추가
+
+        Args:
+            event_type: 이벤트 유형 ('emergency_reset', 'app_exit_during_focus', etc.)
+            details: JSON 문자열 (태그 목록, 사유 등)
+
+        Returns:
+            생성된 이벤트 ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO focus_events (timestamp, event_type, details)
+            VALUES (?, ?, ?)
+        """, (datetime.now().isoformat(), event_type, details))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_focus_events_by_date(self, target_date: date) -> List[Dict[str, Any]]:
+        """특정 날짜의 집중 모드 이벤트 조회"""
+        cursor = self.conn.cursor()
+        date_str = target_date.isoformat()
+        cursor.execute("""
+            SELECT * FROM focus_events
+            WHERE date(timestamp) = ?
+            ORDER BY timestamp ASC
+        """, (date_str,))
+        return [dict(row) for row in cursor.fetchall()]
 
     def close(self):
         """DB 연결 종료"""

@@ -7,6 +7,8 @@ from typing import Optional, List, Dict, Any, Tuple
 from collections import defaultdict
 import calendar
 
+import json
+
 from backend.config import AppConfig
 from backend.database import DatabaseManager
 
@@ -111,6 +113,29 @@ class ActivityLogGenerator:
                 away_parts.append(f"외{len(away_records)-5}건")
             away_parts.append(f"총:{self._format_duration(total_away)}")
             lines.append(f"[자리비움] {' '.join(away_parts)}")
+
+        # 집중 모드 이벤트
+        focus_events = self.db.get_focus_events_by_date(target_date)
+        if focus_events:
+            event_parts = []
+            for evt in focus_events:
+                ts = datetime.fromisoformat(evt['timestamp']).strftime('%H:%M')
+                evt_type = evt['event_type']
+                details = json.loads(evt['details']) if evt['details'] else {}
+
+                if evt_type == 'emergency_reset':
+                    tags = details.get('reset_tags', [])
+                    reason = details.get('reason', '')
+                    tag_str = ','.join(tags) if tags else '없음'
+                    event_parts.append(f"{ts}긴급해제({tag_str}):{reason}")
+                elif evt_type == 'app_exit_during_focus':
+                    tags = details.get('active_tags', [])
+                    tag_str = ','.join(tags) if tags else ''
+                    event_parts.append(f"{ts}집중중종료({tag_str})")
+                else:
+                    event_parts.append(f"{ts}{evt_type}")
+
+            lines.append(f"[집중모드] {' '.join(event_parts)}")
 
         return "\n".join(lines)
 
@@ -372,28 +397,29 @@ class ActivityLogGenerator:
         # 로그 생성 스레드에서 열린 DB 연결 정리
         self.db.close()
 
+    def log_focus_event(self, event_type: str, details: Dict[str, Any]):
+        """
+        집중 모드 이벤트 DB 기록
+
+        Args:
+            event_type: 이벤트 유형 ('emergency_reset', 'app_exit_during_focus', etc.)
+            details: 이벤트 상세 정보 dict
+        """
+        try:
+            self.db.add_focus_event(event_type, json.dumps(details, ensure_ascii=False))
+        except Exception as e:
+            print(f"[LogGenerator] 집중 모드 이벤트 기록 오류: {e}")
+
     def log_emergency_reset(self, reset_tags: List[str], reason: str):
         """
-        긴급 해제 로그 기록
+        긴급 해제 로그 기록 (DB 저장)
 
         Args:
             reset_tags: 해제된 태그 이름 목록
             reason: 해제 사유
         """
-        now = datetime.now()
-        log_lines = [
-            f"[긴급해제] {now.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"해제된 태그: {', '.join(reset_tags) if reset_tags else '없음'}",
-            f"사유: {reason}",
-            ""
-        ]
-
-        # recent.log에 추가
-        recent_log_path = AppConfig.get_recent_log_path()
-        try:
-            existing = recent_log_path.read_text(encoding='utf-8') if recent_log_path.exists() else ""
-            # 맨 앞에 추가
-            new_content = "\n".join(log_lines) + "\n" + existing
-            recent_log_path.write_text(new_content, encoding='utf-8')
-        except Exception as e:
-            print(f"[LogGenerator] 긴급해제 로그 기록 오류: {e}")
+        details = {
+            'reset_tags': reset_tags,
+            'reason': reason
+        }
+        self.log_focus_event('emergency_reset', details)

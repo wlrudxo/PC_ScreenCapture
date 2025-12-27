@@ -1378,6 +1378,8 @@ def set_exit_callback(callback):
     print(f"[API] Exit callback set: {callback}")
 
 
+
+
 @app.post("/api/system/exit")
 async def system_exit():
     """앱 종료"""

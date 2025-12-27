@@ -466,24 +466,37 @@ class ActivityTrackerApp:
         """실제 종료 수행"""
         self.running = False
 
-        if self.monitor_engine and self.monitor_engine.is_alive():
-            print("[App] Stopping monitor engine...")
-            self.monitor_engine.stop(timeout=3.0)
+        try:
+            if self.monitor_engine and self.monitor_engine.is_alive():
+                print("[App] Stopping monitor engine...")
+                self.monitor_engine.stop(timeout=3.0)
+        except Exception as e:
+            print(f"[App] Monitor engine stop error: {e}")
 
-        if self.tray_icon:
-            self.tray_icon.stop()
+        try:
+            if self.tray_icon:
+                self.tray_icon.stop()
+        except Exception as e:
+            print(f"[App] Tray stop error: {e}")
 
-        if self.window:
-            self.window.destroy()
+        try:
+            if self.window:
+                self.window.destroy()
+        except Exception as e:
+            print(f"[App] Window destroy error: {e}")
 
-        if self.api_server_thread and self.api_server_thread.is_alive():
-            self.api_server_thread.stop()
-            self.api_server_thread.join(timeout=3.0)
-        if self._api_pid_path.exists():
-            try:
+        try:
+            if self.api_server_thread and self.api_server_thread.is_alive():
+                self.api_server_thread.stop()
+                if threading.current_thread() is not self.api_server_thread:
+                    self.api_server_thread.join(timeout=3.0)
+        except Exception as e:
+            print(f"[App] API server stop error: {e}")
+        try:
+            if self._api_pid_path.exists():
                 self._api_pid_path.unlink()
-            except Exception:
-                pass
+        except Exception as e:
+            print(f"[App] API pid cleanup error: {e}")
 
         print("[App] Shutting down...")
         os._exit(0)

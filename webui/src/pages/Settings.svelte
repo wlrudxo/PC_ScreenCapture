@@ -168,8 +168,7 @@
     showDbRestoreModal = false;
     restoreInProgress = true;
     try {
-      const res = await api.restoreDatabase(dbRestoreFile);
-      toast.success(res.message + ' - 앱을 재시작해주세요.', 5000);
+      await api.restoreDatabase(dbRestoreFile);
     } catch (err) {
       toast.error('복원 실패: ' + err.message);
     } finally {
@@ -669,6 +668,7 @@
 >
   <p class="text-red-400 font-medium">경고: 현재 데이터베이스가 백업 파일로 교체됩니다.</p>
   <p>파일: <strong class="text-text-primary">{dbRestoreFile?.name}</strong></p>
+  <p class="mt-2 text-yellow-400">복원 후 앱이 종료되며, 직접 재시작해야 적용됩니다.</p>
   <p class="mt-2 text-yellow-400">이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?</p>
 </ConfirmModal>
 

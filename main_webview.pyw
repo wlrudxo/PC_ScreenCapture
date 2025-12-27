@@ -118,6 +118,26 @@ class ApiServerThread(threading.Thread):
         self._server = None
 
     def run(self):
+        from logging.handlers import RotatingFileHandler
+        from backend.config import AppConfig
+
+        log_path = AppConfig.get_log_path().with_name("api.log")
+        handler = RotatingFileHandler(
+            str(log_path),
+            maxBytes=5 * 1024 * 1024,  # 5MB
+            backupCount=3,
+            encoding="utf-8"
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        for logger_name in ("uvicorn.error", "uvicorn.access", "fastapi"):
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.INFO)
+            if not any(
+                isinstance(existing, RotatingFileHandler) and existing.baseFilename == handler.baseFilename
+                for existing in logger.handlers
+            ):
+                logger.addHandler(handler)
+
         config = uvicorn.Config(
             self._app,
             host="127.0.0.1",
@@ -600,31 +620,10 @@ def activate_existing_window() -> bool:
 
 def main():
     """메인 함수"""
-    def terminate_pid(pid: int) -> bool:
-        if os.name != 'nt':
-            try:
-                os.kill(pid, signal.SIGTERM)
-                return True
-            except Exception:
-                return False
-        try:
-            PROCESS_TERMINATE = 0x0001
-            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-            if not handle:
-                return False
-            ctypes.windll.kernel32.TerminateProcess(handle, 1)
-            ctypes.windll.kernel32.CloseHandle(handle)
-            return True
-        except Exception:
-            return False
-
-    # 이전 API 프로세스가 남아있으면 정리
+    # 이전 API 프로세스의 PID 파일이 남아있으면 정리
     api_pid_path = AppConfig.get_api_pid_path()
     if api_pid_path.exists():
         try:
-            pid = int(api_pid_path.read_text(encoding="utf-8").strip())
-            if terminate_pid(pid):
-                time.sleep(0.5)
             api_pid_path.unlink()
         except Exception:
             pass

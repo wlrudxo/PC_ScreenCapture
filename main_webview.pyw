@@ -115,13 +115,17 @@ def _run_api_server(port: int):
     from backend.config import AppConfig
     from backend.api_server import app as fastapi_app
 
+    from logging.handlers import RotatingFileHandler
     log_path = AppConfig.get_log_path().with_name("api.log")
-    logging.basicConfig(
-        filename=str(log_path),
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        force=True
+    handler = RotatingFileHandler(
+        str(log_path),
+        maxBytes=5*1024*1024,  # 5MB
+        backupCount=3,
+        encoding='utf-8'
     )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.root.handlers = [handler]
+    logging.root.setLevel(logging.INFO)
 
     config = uvicorn.Config(
         fastapi_app,
@@ -682,11 +686,17 @@ def main():
         os.environ['DEV_MODE'] = '1'
         print("[Mode] Development mode enabled")
 
+    from logging.handlers import RotatingFileHandler
     log_path = AppConfig.get_log_path()
     root_logger = logging.getLogger()
     for handler in list(root_logger.handlers):
         root_logger.removeHandler(handler)
-    file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        str(log_path),
+        maxBytes=5*1024*1024,  # 5MB
+        backupCount=3,
+        encoding='utf-8'
+    )
     file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(file_handler)

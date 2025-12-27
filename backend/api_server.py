@@ -71,6 +71,8 @@ def _regenerate_logs():
                 print("[API] 로그 재생성 완료")
             except Exception as e:
                 print(f"[API] 로그 재생성 오류: {e}")
+            finally:
+                _log_generator.db.close()
         threading.Thread(target=generate, daemon=True).start()
 
 
@@ -1217,57 +1219,43 @@ async def backup_database():
 @app.post("/api/data/db/restore")
 async def restore_database(file: UploadFile = File(...)):
     """데이터베이스 복원 (앱 재시작 필요)"""
-    from backend.import_export import ImportExportManager
-    import tempfile
+    import json
+    import sqlite3
+    from backend.config import AppConfig
 
     # 확장자 검증
     if not file.filename.endswith('.db'):
         raise HTTPException(400, "Invalid file type. Only .db files are allowed.")
 
-    # 임시 파일로 저장
-    temp_path = Path(tempfile.gettempdir()) / f"restore_{uuid.uuid4().hex}.db"
-
+    # 복원 예약 파일로 저장
+    pending_db_path = AppConfig.get_restore_pending_db_path()
     content = await file.read()
-    with open(temp_path, 'wb') as f:
+    with open(pending_db_path, 'wb') as f:
         f.write(content)
 
-    db_instance = get_db()
-    ie_manager = ImportExportManager(db_instance)
+    try:
+        conn = sqlite3.connect(str(pending_db_path))
+        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        conn.close()
+    except Exception as e:
+        if pending_db_path.exists():
+            pending_db_path.unlink()
+        raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {e}")
 
-    # 모니터링 일시정지/재개 콜백
-    def pause_monitoring():
-        global db
-        if _monitor_engine:
-            _monitor_engine.pause()
-            if not _monitor_engine.request_db_close(timeout=3.0):
-                print("[API] MonitorEngine DB close timeout")
-        # api_server의 db 연결도 WAL checkpoint 후 닫기
-        if db is not None:
-            try:
-                db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                db.close()
-            except Exception as e:
-                print(f"[API] DB close warning: {e}")
-            db = None
+    if result != "ok":
+        pending_db_path.unlink()
+        raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {result}")
 
-    def resume_monitoring():
-        if _monitor_engine:
-            _monitor_engine.resume()
+    meta = {
+        "original_name": file.filename,
+        "created_at": datetime.now().isoformat()
+    }
+    AppConfig.get_restore_pending_path().write_text(json.dumps(meta), encoding="utf-8")
 
-    success, message = ie_manager.import_database(
-        str(temp_path),
-        pause_callback=pause_monitoring,
-        resume_callback=resume_monitoring
-    )
+    if _exit_callback:
+        asyncio.get_event_loop().call_later(0.5, _exit_callback)
 
-    # 임시 파일 삭제
-    if temp_path.exists():
-        temp_path.unlink()
-
-    if not success:
-        raise HTTPException(500, message)
-
-    return {"message": message, "restart_required": True}
+    return {"message": "복원이 예약되었습니다. 앱을 재시작하면 적용됩니다.", "restart_required": True}
 
 
 @app.get("/api/data/rules/export")

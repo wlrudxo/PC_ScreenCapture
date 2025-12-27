@@ -369,3 +369,5 @@ class ActivityLogGenerator:
         if today.day <= 3:
             prev_month = today.replace(day=1) - timedelta(days=1)
             self.generate_monthly_log(prev_month.year, prev_month.month)
+        # 로그 생성 스레드에서 열린 DB 연결 정리
+        self.db.close()

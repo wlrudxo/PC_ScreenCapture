@@ -108,3 +108,13 @@ class AppConfig:
     def get_recent_log_path():
         """최근 N일 통합 로그 경로"""
         return AppConfig.get_activity_logs_dir() / "recent.log"
+
+    @staticmethod
+    def get_restore_pending_path():
+        """복원 예약 메타 파일 경로"""
+        return AppConfig.get_app_dir() / "restore_pending.json"
+
+    @staticmethod
+    def get_restore_pending_db_path():
+        """복원 예약 DB 파일 경로"""
+        return AppConfig.get_app_dir() / "restore_pending.db"

@@ -6,6 +6,10 @@ PyWebView + FastAPI + pystray 기반 앱
 """
 import sys
 import os
+import shutil
+import sqlite3
+import urllib.request
+import urllib.error
 import threading
 import time
 import asyncio
@@ -54,6 +58,18 @@ class _StreamFilter:
     @property
     def encoding(self):
         return getattr(self._stream, "encoding", None)
+
+
+class _LogFilter(logging.Filter):
+    """Filter noisy pywebview native introspection errors from logs."""
+
+    def __init__(self, drop_substrings):
+        super().__init__()
+        self._drop_substrings = drop_substrings
+
+    def filter(self, record):
+        message = record.getMessage()
+        return not any(sub in message for sub in self._drop_substrings)
 
 try:
     import webview
@@ -197,9 +213,12 @@ class ActivityTrackerApp:
         def run():
             # 이벤트 루프 새로 생성 (스레드에서 필요)
             import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(server.serve())
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(server.serve())
+            except Exception as e:
+                logging.exception("[API Server] Failed to start: %s", e)
 
         self.api_server_thread = threading.Thread(target=run, daemon=True)
         self.api_server_thread.start()
@@ -239,6 +258,8 @@ class ActivityTrackerApp:
 
         # 로그 생성 (백그라운드)
         self._start_log_generator()
+        # 초기화에서 열었던 메인 스레드 DB 연결을 닫아 잠금 최소화
+        self.db_manager.close()
 
     def _start_log_generator(self):
         """활동 로그 생성 (백그라운드)"""
@@ -250,6 +271,19 @@ class ActivityTrackerApp:
                 print(f"[Log Generator] Error: {e}")
 
         threading.Thread(target=generate_logs, daemon=True).start()
+
+    def _wait_for_api_ready(self, timeout: float = 10.0) -> bool:
+        """API 서버 준비 대기"""
+        deadline = time.time() + timeout
+        url = f"http://127.0.0.1:{self.api_port}/api/health"
+        while time.time() < deadline:
+            try:
+                with urllib.request.urlopen(url, timeout=1) as resp:
+                    if resp.status == 200:
+                        return True
+            except Exception:
+                time.sleep(0.5)
+        return False
 
     def _on_activity_detected(self, activity_info: dict):
         """활동 감지 시 WebSocket으로 브로드캐스트"""
@@ -430,6 +464,15 @@ class ActivityTrackerApp:
         # API 서버 시작
         self.start_api_server()
         time.sleep(1)  # 서버 시작 대기
+        if not self._wait_for_api_ready(timeout=12.0):
+            logging.error("[API Server] Health check failed")
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "API server did not respond. Please restart the app.",
+                "Activity Tracker",
+                0x10 | 0x1000
+            )
+            return
 
         # 종료 콜백 설정
         set_exit_callback(self.quit_app)
@@ -519,10 +562,50 @@ def main():
         print("[App] Already running (port 8000 in use). Exiting.")
         sys.exit(0)
 
+    # 복원 예약이 있으면 앱 시작 전에 적용
+    pending_meta_path = AppConfig.get_restore_pending_path()
+    pending_db_path = AppConfig.get_restore_pending_db_path()
+    if pending_meta_path.exists() and pending_db_path.exists():
+        try:
+            conn = sqlite3.connect(str(pending_db_path))
+            result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            conn.close()
+            if result != "ok":
+                print(f"[Restore] Pending DB integrity failed: {result}")
+            else:
+                db_path = AppConfig.get_db_path()
+                wal_path = db_path.with_suffix(".db-wal")
+                shm_path = db_path.with_suffix(".db-shm")
+                if wal_path.exists():
+                    wal_path.unlink()
+                if shm_path.exists():
+                    shm_path.unlink()
+                shutil.copy2(pending_db_path, db_path)
+                pending_db_path.unlink()
+                pending_meta_path.unlink()
+                print("[Restore] Pending DB applied successfully")
+        except Exception as e:
+            print(f"[Restore] Pending DB apply failed: {e}")
+
     # 개발 모드 설정
     if '--dev' in sys.argv:
         os.environ['DEV_MODE'] = '1'
         print("[Mode] Development mode enabled")
+
+    log_path = AppConfig.get_log_path()
+    logging.basicConfig(
+        filename=str(log_path),
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s"
+    )
+    logging.getLogger("pywebview").setLevel(logging.CRITICAL)
+    logging.getLogger("webview").setLevel(logging.CRITICAL)
+    root_logger = logging.getLogger()
+    log_filter = _LogFilter(_pywebview_noise)
+    for handler in root_logger.handlers:
+        handler.addFilter(log_filter)
+    logging.getLogger("pywebview").addFilter(log_filter)
+    logging.getLogger("webview").addFilter(log_filter)
 
     app = ActivityTrackerApp()
 

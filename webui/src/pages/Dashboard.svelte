@@ -3,6 +3,7 @@
   import { Chart, registerables } from 'chart.js';
   import { api } from '../lib/api/client.js';
   import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate } from '../lib/stores/app.js';
+  import { activityUpdated } from '../lib/stores/websocket.js';
 
   Chart.register(...registerables);
 
@@ -22,10 +23,20 @@
 
   let pieChart;
   let barChart;
+  let lastRefresh = 0;
 
   // 날짜 변경 시 데이터 다시 로드
   $: if ($selectedDate) {
     loadDashboardData($selectedDate);
+  }
+
+  // WebSocket 실시간 업데이트 구독 (오늘 날짜일 때만, 1분 간격)
+  $: if ($activityUpdated > 0 && $selectedDate === formatLocalDate()) {
+    const now = Date.now();
+    if (now - lastRefresh > 60000) {
+      lastRefresh = now;
+      loadDashboardData($selectedDate);
+    }
   }
 
   async function loadDashboardData(date) {

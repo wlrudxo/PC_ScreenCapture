@@ -384,10 +384,10 @@
 
         if (dayOfWeek === 0 || dayOfWeek === 6) {
           weekendTotal += dayTotal;
-          weekendCount++;
+          if (dayTotal > 0) weekendCount++;
         } else {
           weekdayTotal += dayTotal;
-          weekdayCount++;
+          if (dayTotal > 0) weekdayCount++;
         }
       }
 

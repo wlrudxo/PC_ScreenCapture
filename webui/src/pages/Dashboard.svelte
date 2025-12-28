@@ -35,12 +35,14 @@
     const now = Date.now();
     if (now - lastRefresh > 60000) {
       lastRefresh = now;
-      loadDashboardData($selectedDate);
+      loadDashboardData($selectedDate, { silent: true });
     }
   }
 
-  async function loadDashboardData(date) {
-    loading = true;
+  async function loadDashboardData(date, { silent = false } = {}) {
+    if (!silent) {
+      loading = true;
+    }
     error = null;
 
     try {
@@ -91,7 +93,9 @@
         loadDemoData();
       }
     } finally {
-      loading = false;
+      if (!silent) {
+        loading = false;
+      }
     }
   }
 

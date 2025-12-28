@@ -18,12 +18,14 @@
   $: if ($activityUpdated > 0) {
     const today = formatLocalDate();
     if ($selectedDate === today) {
-      loadTimelineData($selectedDate, selectedTag);
+      loadTimelineData($selectedDate, selectedTag, { silent: true });
     }
   }
 
-  async function loadTimelineData(date, tagId) {
-    loading = true;
+  async function loadTimelineData(date, tagId, { silent = false } = {}) {
+    if (!silent) {
+      loading = true;
+    }
     error = null;
 
     try {
@@ -46,7 +48,9 @@
       console.error('Failed to load timeline:', err);
       error = err.message;
     } finally {
-      loading = false;
+      if (!silent) {
+        loading = false;
+      }
     }
   }
 

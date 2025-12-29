@@ -135,15 +135,17 @@ export const api = {
   setAutoStart: (enabled) => request('/settings/autostart', { method: 'PUT', body: JSON.stringify({ enabled }) }),
 
   // Data Management - DB Backup/Restore
-  backupDatabase: () => {
+  backupDatabase: (includeMedia = true) => {
     // 파일 다운로드를 위해 직접 fetch 사용
-    const url = `${API_BASE}/data/db/backup`;
+    const url = `${API_BASE}/data/db/backup?include_media=${includeMedia ? 'true' : 'false'}`;
     return fetch(url).then(res => {
       if (!res.ok) throw new Error('Backup failed');
       return res.blob();
     }).then(blob => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `activity_tracker_backup_${timestamp}.db`;
+      const filename = includeMedia
+        ? `activity_tracker_backup_${timestamp}.zip`
+        : `activity_tracker_backup_${timestamp}.db`;
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

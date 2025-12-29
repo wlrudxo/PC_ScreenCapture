@@ -34,6 +34,7 @@
   let restoreInProgress = false;
   let rulesExportInProgress = false;
   let rulesImportInProgress = false;
+  let backupIncludeMedia = true;
 
   // Rules import modal
   let showRulesImportModal = false;
@@ -139,7 +140,7 @@
     try {
       // PyWebView 네이티브 저장 다이얼로그 사용
       if (window.pywebview?.api?.save_backup) {
-        const result = await window.pywebview.api.save_backup();
+        const result = await window.pywebview.api.save_backup(backupIncludeMedia);
         if (result.success) {
           toast.success(result.message);
         } else if (result.message !== '취소됨') {
@@ -147,8 +148,8 @@
         }
       } else {
         // 폴백: 기존 방식 (브라우저)
-        await api.backupDatabase();
-        toast.success('백업 파일 다운로드 시작');
+        await api.backupDatabase(backupIncludeMedia);
+        toast.success(backupIncludeMedia ? '백업(zip) 다운로드 시작' : '백업(db) 다운로드 시작');
       }
     } catch (err) {
       toast.error('백업 실패: ' + err.message);
@@ -355,7 +356,7 @@
 <!-- Hidden file inputs -->
 <input
   type="file"
-  accept=".db"
+  accept=".db,.zip"
   bind:this={dbRestoreInput}
   on:change={handleDbRestoreSelect}
   class="hidden"
@@ -538,9 +539,19 @@
 
     <!-- DB Backup/Restore -->
     <div class="space-y-3">
-      <div class="flex items-center gap-2">
-        <span class="font-medium text-text-primary">데이터베이스</span>
-        <span class="text-xs text-text-muted">(활동 기록 포함)</span>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-text-primary">데이터베이스</span>
+          <span class="text-xs text-text-muted">(활동 기록 포함)</span>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-text-muted">
+          <input
+            type="checkbox"
+            bind:checked={backupIncludeMedia}
+            class="w-3.5 h-3.5 rounded border-border bg-bg-tertiary text-accent focus:ring-accent focus:ring-offset-0"
+          />
+          <span>알림 컨텐츠도 포함</span>
+        </label>
       </div>
 
       <div class="grid grid-cols-2 gap-4">
@@ -884,6 +895,7 @@
       <h4 class="font-semibold text-text-primary mb-2">데이터 관리</h4>
       <ul class="list-disc list-inside space-y-1 text-text-secondary">
         <li><strong class="text-text-primary">전체 백업</strong> - DB 파일 전체 백업 (활동 기록 포함)</li>
+        <li><strong class="text-text-primary">알림 컨텐츠도 포함</strong> - 체크 시 이미지/사운드 포함 zip 백업</li>
         <li><strong class="text-text-primary">백업 복원</strong> - 백업 파일로 DB 복원 (앱 재시작 필요)</li>
         <li><strong class="text-text-primary">룰 내보내기</strong> - 태그와 분류 룰만 JSON으로 내보내기</li>
         <li><strong class="text-text-primary">룰 가져오기</strong> - 다른 PC에서 만든 룰 가져오기 (병합/교체 선택)</li>

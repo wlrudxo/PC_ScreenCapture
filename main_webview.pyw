@@ -19,6 +19,8 @@ import socket
 import signal
 import ctypes
 import logging
+import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -102,6 +104,10 @@ _pywebview_noise = [
     "maximum recursion depth exceeded while calling a Python object",
     "AccessibilityObject.Bounds",
     "__abstractmethods__",
+    "CoreWebView2 members can only be accessed",
+    "AllowExternalDrop",
+    "ICoreWebView2Controller",
+    "System.__ComObject",
 ]
 sys.stdout = _StreamFilter(sys.stdout, _pywebview_noise)
 sys.stderr = _StreamFilter(sys.stderr, _pywebview_noise)
@@ -161,17 +167,26 @@ class PyWebViewApi:
     def __init__(self, app: 'ActivityTrackerApp'):
         self.app = app
 
-    def save_backup(self) -> dict:
+    def save_backup(self, include_media: bool = True) -> dict:
         """DB 백업 - 저장 다이얼로그로 경로 선택"""
         try:
             from datetime import datetime
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            default_name = f"activity_tracker_backup_{timestamp}.db"
+            default_name = (
+                f"activity_tracker_backup_{timestamp}.zip"
+                if include_media
+                else f"activity_tracker_backup_{timestamp}.db"
+            )
 
             result = self.app.window.create_file_dialog(
                 webview.SAVE_DIALOG,
                 save_filename=default_name,
-                file_types=('Database Files (*.db)', 'All files (*.*)')
+                file_types=(
+                    'Backup Files (*.zip)'
+                    if include_media
+                    else 'Database Files (*.db)',
+                    'All files (*.*)'
+                )
             )
 
             if not result:
@@ -180,7 +195,10 @@ class PyWebViewApi:
             save_path = result if isinstance(result, str) else result[0]
 
             ie_manager = ImportExportManager(self.app.db_manager)
-            success = ie_manager.export_database(save_path)
+            if include_media:
+                success = ie_manager.export_full_backup(save_path)
+            else:
+                success = ie_manager.export_database(save_path)
 
             if success:
                 return {"success": True, "message": f"백업 완료: {save_path}"}
@@ -320,8 +338,24 @@ class ActivityTrackerApp:
 
         threading.Thread(target=generate_logs, daemon=True).start()
 
+    def _check_dist_timestamp(self) -> tuple[str, str]:
+        """dist 폴더 타임스탬프 확인"""
+        dist_dir = Path(__file__).parent / "webui" / "dist"
+        index_file = dist_dir / "index.html"
+
+        if not dist_dir.exists():
+            return "NOT_FOUND", ""
+
+        if index_file.exists():
+            mtime = index_file.stat().st_mtime
+            build_time = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            return "OK", build_time
+
+        return "NO_INDEX", ""
+
     def _wait_for_api_ready(self, timeout: float = 10.0) -> bool:
         """API 서버 준비 대기"""
+        import json
         deadline = time.time() + timeout
         url = f"http://127.0.0.1:{self.api_port}/api/health"
         last_error = None
@@ -329,7 +363,22 @@ class ActivityTrackerApp:
             try:
                 with urllib.request.urlopen(url, timeout=1) as resp:
                     if resp.status == 200:
-                        logging.info("[API Server] Health check OK")
+                        data = json.loads(resp.read().decode())
+                        api_version = data.get("api_version", "unknown")
+
+                        # dist 타임스탬프 확인
+                        dist_status, build_time = self._check_dist_timestamp()
+
+                        print(f"[Version Check] API: v{api_version}, dist: {dist_status}")
+                        if build_time:
+                            print(f"[Version Check] WebUI build time: {build_time}")
+
+                        if dist_status == "NOT_FOUND":
+                            print("[Warning] webui/dist not found! Run 'npm run build' in webui folder.")
+                        elif dist_status == "NO_INDEX":
+                            print("[Warning] webui/dist/index.html not found!")
+
+                        logging.info(f"[API Server] Health check OK - API v{api_version}, dist {dist_status}")
                         return True
             except Exception as e:
                 last_error = e
@@ -655,27 +704,83 @@ def main():
     # 복원 예약이 있으면 앱 시작 전에 적용
     pending_meta_path = AppConfig.get_restore_pending_path()
     pending_db_path = AppConfig.get_restore_pending_db_path()
-    if pending_meta_path.exists() and pending_db_path.exists():
-        try:
-            conn = sqlite3.connect(str(pending_db_path))
-            result = conn.execute("PRAGMA integrity_check").fetchone()[0]
-            conn.close()
-            if result != "ok":
-                print(f"[Restore] Pending DB integrity failed: {result}")
-            else:
-                db_path = AppConfig.get_db_path()
-                wal_path = db_path.with_suffix(".db-wal")
-                shm_path = db_path.with_suffix(".db-shm")
-                if wal_path.exists():
-                    wal_path.unlink()
-                if shm_path.exists():
-                    shm_path.unlink()
-                shutil.copy2(pending_db_path, db_path)
-                pending_db_path.unlink()
-                pending_meta_path.unlink()
-                print("[Restore] Pending DB applied successfully")
-        except Exception as e:
-            print(f"[Restore] Pending DB apply failed: {e}")
+    pending_zip_path = AppConfig.get_restore_pending_media_path()
+    if pending_meta_path.exists():
+        if pending_zip_path.exists():
+            try:
+                with zipfile.ZipFile(pending_zip_path, 'r') as zip_file:
+                    if "activity_tracker.db" not in zip_file.namelist():
+                        raise RuntimeError("Missing activity_tracker.db in pending zip")
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        zip_file.extract("activity_tracker.db", temp_dir)
+                        for name in zip_file.namelist():
+                            if name.startswith("images/") or name.startswith("sounds/"):
+                                zip_file.extract(name, temp_dir)
+
+                        temp_dir_path = Path(temp_dir)
+                        temp_db_path = temp_dir_path / "activity_tracker.db"
+                        conn = sqlite3.connect(str(temp_db_path))
+                        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+                        conn.close()
+                        if result != "ok":
+                            print(f"[Restore] Pending ZIP DB integrity failed: {result}")
+                        else:
+                            db_path = AppConfig.get_db_path()
+                            wal_path = db_path.with_suffix(".db-wal")
+                            shm_path = db_path.with_suffix(".db-shm")
+                            if wal_path.exists():
+                                wal_path.unlink()
+                            if shm_path.exists():
+                                shm_path.unlink()
+                            shutil.copy2(temp_db_path, db_path)
+
+                            images_src = temp_dir_path / "images"
+                            sounds_src = temp_dir_path / "sounds"
+                            images_dest = AppConfig.get_images_dir()
+                            sounds_dest = AppConfig.get_sounds_dir()
+                            if images_src.exists():
+                                for image in images_src.rglob("*"):
+                                    if image.is_file():
+                                        rel_path = image.relative_to(images_src)
+                                        target_path = images_dest / rel_path
+                                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                                        shutil.copy2(image, target_path)
+                            if sounds_src.exists():
+                                for sound in sounds_src.rglob("*"):
+                                    if sound.is_file():
+                                        rel_path = sound.relative_to(sounds_src)
+                                        target_path = sounds_dest / rel_path
+                                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                                        shutil.copy2(sound, target_path)
+
+                            pending_zip_path.unlink()
+                            pending_meta_path.unlink()
+                            if pending_db_path.exists():
+                                pending_db_path.unlink()
+                            print("[Restore] Pending ZIP applied successfully")
+            except Exception as e:
+                print(f"[Restore] Pending ZIP apply failed: {e}")
+        elif pending_db_path.exists():
+            try:
+                conn = sqlite3.connect(str(pending_db_path))
+                result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+                conn.close()
+                if result != "ok":
+                    print(f"[Restore] Pending DB integrity failed: {result}")
+                else:
+                    db_path = AppConfig.get_db_path()
+                    wal_path = db_path.with_suffix(".db-wal")
+                    shm_path = db_path.with_suffix(".db-shm")
+                    if wal_path.exists():
+                        wal_path.unlink()
+                    if shm_path.exists():
+                        shm_path.unlink()
+                    shutil.copy2(pending_db_path, db_path)
+                    pending_db_path.unlink()
+                    pending_meta_path.unlink()
+                    print("[Restore] Pending DB applied successfully")
+            except Exception as e:
+                print(f"[Restore] Pending DB apply failed: {e}")
 
     # 개발 모드 설정
     if '--dev' in sys.argv:

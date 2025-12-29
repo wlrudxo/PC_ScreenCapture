@@ -233,7 +233,45 @@ class DatabaseManager:
                     VALUES ('화면 잠금', 100, '__LOCKED__,__IDLE__', ?)
                 """, (away_tag_id,))
 
+        self._reconcile_alert_assets()
         self._seed_alert_assets()
+
+        self.conn.commit()
+
+    def _reconcile_alert_assets(self):
+        """알림 이미지/사운드 경로 정리 및 누락 항목 제거"""
+        cursor = self.conn.cursor()
+
+        images_dir = AppConfig.get_images_dir()
+        sounds_dir = AppConfig.get_sounds_dir()
+
+        cursor.execute("SELECT id, file_path FROM alert_images")
+        for row in cursor.fetchall():
+            file_path = Path(row["file_path"])
+            if file_path.exists():
+                continue
+            candidate = images_dir / file_path.name
+            if candidate.exists():
+                cursor.execute(
+                    "UPDATE alert_images SET file_path = ? WHERE id = ?",
+                    (str(candidate), row["id"])
+                )
+            else:
+                cursor.execute("DELETE FROM alert_images WHERE id = ?", (row["id"],))
+
+        cursor.execute("SELECT id, file_path FROM alert_sounds")
+        for row in cursor.fetchall():
+            file_path = Path(row["file_path"])
+            if file_path.exists():
+                continue
+            candidate = sounds_dir / file_path.name
+            if candidate.exists():
+                cursor.execute(
+                    "UPDATE alert_sounds SET file_path = ? WHERE id = ?",
+                    (str(candidate), row["id"])
+                )
+            else:
+                cursor.execute("DELETE FROM alert_sounds WHERE id = ?", (row["id"],))
 
         self.conn.commit()
 

@@ -1,5 +1,6 @@
 # Web UI & Desktop
 pywebview>=6.1
+pythonnet>=3.0.0  # Required for pywebview EdgeChromium on Windows
 pystray>=0.19.5
 pillow>=12.0.0
 
@@ -12,3 +13,6 @@ python-multipart>=0.0.21
 websockets>=15.0.1
 psutil>=7.2.0
 windows-toasts>=1.3.1
+
+# Build (optional, for exe packaging)
+# pyinstaller>=6.0

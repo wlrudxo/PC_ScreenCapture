@@ -1,6 +1,8 @@
 """
 FastAPI 서버 - 웹 UI용 REST + WebSocket API
 """
+API_VERSION = "1.1.0"  # Increment when API changes require webui rebuild
+
 import asyncio
 import mimetypes
 import os
@@ -1233,11 +1235,10 @@ async def set_autostart_status(data: dict):
 
 
 @app.get("/api/data/db/backup")
-async def backup_database():
-    """데이터베이스 백업 (파일 다운로드)"""
+async def backup_database(include_media: bool = Query(True)):
+    """데이터베이스 + 알림 파일 백업 (zip 다운로드)"""
     from fastapi.responses import FileResponse
     from backend.import_export import ImportExportManager
-    from backend.config import AppConfig
     import tempfile
 
     db = get_db()
@@ -1245,10 +1246,13 @@ async def backup_database():
 
     # 임시 파일에 백업
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_name = f"activity_tracker_backup_{timestamp}.db"
+    backup_name = f"activity_tracker_backup_{timestamp}.zip" if include_media else f"activity_tracker_backup_{timestamp}.db"
     backup_path = Path(tempfile.gettempdir()) / backup_name
 
-    success = ie_manager.export_database(str(backup_path))
+    if include_media:
+        success = ie_manager.export_full_backup(str(backup_path))
+    else:
+        success = ie_manager.export_database(str(backup_path))
 
     if not success:
         raise HTTPException(500, "Failed to create backup")
@@ -1265,34 +1269,69 @@ async def restore_database(file: UploadFile = File(...)):
     """데이터베이스 복원 (앱 재시작 필요)"""
     import json
     import sqlite3
+    import tempfile
+    import zipfile
     from backend.config import AppConfig
 
     # 확장자 검증
-    if not file.filename.endswith('.db'):
-        raise HTTPException(400, "Invalid file type. Only .db files are allowed.")
+    filename = file.filename or ""
+    is_db = filename.lower().endswith('.db')
+    is_zip = filename.lower().endswith('.zip')
+    if not is_db and not is_zip:
+        raise HTTPException(400, "Invalid file type. Only .db or .zip files are allowed.")
 
-    # 복원 예약 파일로 저장
-    pending_db_path = AppConfig.get_restore_pending_db_path()
     content = await file.read()
-    with open(pending_db_path, 'wb') as f:
-        f.write(content)
+    if is_db:
+        # 복원 예약 파일로 저장
+        pending_db_path = AppConfig.get_restore_pending_db_path()
+        with open(pending_db_path, 'wb') as f:
+            f.write(content)
 
-    try:
-        conn = sqlite3.connect(str(pending_db_path))
-        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
-        conn.close()
-    except Exception as e:
-        if pending_db_path.exists():
+        try:
+            conn = sqlite3.connect(str(pending_db_path))
+            result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            conn.close()
+        except Exception as e:
+            if pending_db_path.exists():
+                pending_db_path.unlink()
+            raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {e}")
+
+        if result != "ok":
             pending_db_path.unlink()
-        raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {e}")
+            raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {result}")
+    else:
+        pending_zip_path = AppConfig.get_restore_pending_media_path()
+        with open(pending_zip_path, 'wb') as f:
+            f.write(content)
 
-    if result != "ok":
-        pending_db_path.unlink()
-        raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {result}")
+        try:
+            with zipfile.ZipFile(pending_zip_path, 'r') as zip_file:
+                if "activity_tracker.db" not in zip_file.namelist():
+                    raise HTTPException(400, "복원 zip에 activity_tracker.db가 없습니다.")
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    zip_file.extract("activity_tracker.db", temp_dir)
+                    temp_db_path = Path(temp_dir) / "activity_tracker.db"
+                    conn = sqlite3.connect(str(temp_db_path))
+                    result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+                    conn.close()
+        except HTTPException:
+            if pending_zip_path.exists():
+                pending_zip_path.unlink()
+            raise
+        except Exception as e:
+            if pending_zip_path.exists():
+                pending_zip_path.unlink()
+            raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {e}")
+
+        if result != "ok":
+            if pending_zip_path.exists():
+                pending_zip_path.unlink()
+            raise HTTPException(400, f"복원 파일이 유효하지 않습니다: {result}")
 
     meta = {
         "original_name": file.filename,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "backup_type": "zip" if is_zip else "db"
     }
     AppConfig.get_restore_pending_path().write_text(json.dumps(meta), encoding="utf-8")
 
@@ -1393,7 +1432,7 @@ async def websocket_activity(websocket: WebSocket):
 @app.get("/api/health")
 async def health_check():
     """헬스 체크"""
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now().isoformat(), "api_version": API_VERSION}
 
 
 # === System ===

@@ -5,9 +5,13 @@ Import/Export 유틸리티
 """
 import json
 import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+
+from backend.config import AppConfig
 
 
 class ImportExportManager:
@@ -63,6 +67,54 @@ class ImportExportManager:
 
         except Exception as e:
             print(f"[ImportExport] DB 백업 실패: {e}")
+            return False
+
+    def _add_dir_to_zip(self, source_dir: Path, zip_file: zipfile.ZipFile, arc_prefix: str):
+        if not source_dir.exists():
+            return
+        for path in source_dir.rglob("*"):
+            if path.is_file():
+                rel_path = path.relative_to(source_dir)
+                arcname = f"{arc_prefix}/{rel_path.as_posix()}"
+                zip_file.write(path, arcname)
+
+    def export_full_backup(self, backup_path: str) -> bool:
+        """
+        데이터베이스 + 알림 이미지/사운드를 zip으로 백업
+
+        Args:
+            backup_path: 백업 파일 경로 (.zip 확장자)
+
+        Returns:
+            성공 여부
+        """
+        import sqlite3
+
+        try:
+            backup_path = Path(backup_path)
+            if backup_path.suffix.lower() != '.zip':
+                backup_path = backup_path.with_suffix('.zip')
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_dir = Path(temp_dir)
+                temp_db = temp_dir / "activity_tracker.db"
+
+                backup_conn = sqlite3.connect(str(temp_db))
+                try:
+                    self.db_manager.conn.backup(backup_conn)
+                finally:
+                    backup_conn.close()
+
+                with zipfile.ZipFile(backup_path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+                    zip_file.write(temp_db, "activity_tracker.db")
+                    self._add_dir_to_zip(AppConfig.get_images_dir(), zip_file, "images")
+                    self._add_dir_to_zip(AppConfig.get_sounds_dir(), zip_file, "sounds")
+
+            print(f"[ImportExport] 전체 백업 완료: {backup_path}")
+            return True
+
+        except Exception as e:
+            print(f"[ImportExport] 전체 백업 실패: {e}")
             return False
 
     # === 룰 Import/Export (JSON) ===

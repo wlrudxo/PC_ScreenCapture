@@ -706,6 +706,7 @@ def main():
     pending_db_path = AppConfig.get_restore_pending_db_path()
     pending_zip_path = AppConfig.get_restore_pending_media_path()
     if pending_meta_path.exists():
+        applied = False
         if pending_zip_path.exists():
             try:
                 with zipfile.ZipFile(pending_zip_path, 'r') as zip_file:
@@ -753,10 +754,7 @@ def main():
                                         target_path.parent.mkdir(parents=True, exist_ok=True)
                                         shutil.copy2(sound, target_path)
 
-                            pending_zip_path.unlink()
-                            pending_meta_path.unlink()
-                            if pending_db_path.exists():
-                                pending_db_path.unlink()
+                            applied = True
                             print("[Restore] Pending ZIP applied successfully")
             except Exception as e:
                 print(f"[Restore] Pending ZIP apply failed: {e}")
@@ -776,11 +774,20 @@ def main():
                     if shm_path.exists():
                         shm_path.unlink()
                     shutil.copy2(pending_db_path, db_path)
-                    pending_db_path.unlink()
-                    pending_meta_path.unlink()
+                    applied = True
                     print("[Restore] Pending DB applied successfully")
             except Exception as e:
                 print(f"[Restore] Pending DB apply failed: {e}")
+
+        if applied:
+            try:
+                if pending_zip_path.exists():
+                    pending_zip_path.unlink()
+                if pending_db_path.exists():
+                    pending_db_path.unlink()
+                pending_meta_path.unlink()
+            except Exception as e:
+                print(f"[Restore] Pending cleanup failed: {e}")
 
     # 개발 모드 설정
     if '--dev' in sys.argv:

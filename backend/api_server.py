@@ -400,79 +400,38 @@ async def get_dashboard_period(
 
 @app.get("/api/dashboard/hourly")
 async def get_dashboard_hourly(date: str = Query(..., description="YYYY-MM-DD format")):
-    """시간대별 태그 통계 (0시~23시)"""
+    """시간대별 태그 통계 (0시~23시) - SQL 집계로 최적화"""
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
 
     db = get_db()
-
-    # 0시~23시 (24개 시간대)
-    hours = list(range(0, 24))
-    hourly_data = {h: {} for h in hours}
-
-    # 해당 날짜의 모든 활동 가져오기
     start = datetime.combine(target_date.date(), datetime.min.time())
     end = start + timedelta(days=1)
-    activities = db.get_activities(start, end)
 
-    # 모든 태그 정보 가져오기
-    tags = {t['id']: t for t in db.get_all_tags()}
+    # SQL 집계로 시간대별 통계 조회 (Python 루프 제거)
+    raw_stats = db.get_hourly_stats(start, end)
 
-    # 활동별로 시간대 분배
-    for act in activities:
-        start_time = act.get('start_time')
-        end_time = act.get('end_time')
-        tag_id = act.get('tag_id')
-
-        if not start_time or not tag_id:
+    # 시간대별로 그룹핑
+    hourly_data = {h: [] for h in range(24)}
+    for row in raw_stats:
+        hour = row['hour']
+        tag_name = row.get('tag_name', 'Unknown')
+        # 자리비움 제외
+        if tag_name == '자리비움':
             continue
-
-        # datetime 파싱
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time)
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time) if end_time else datetime.now()
-        elif end_time is None:
-            end_time = datetime.now()
-
-        # 각 시간대에 걸친 시간 계산
-        for hour in hours:
-            hour_start = target_date.replace(hour=hour, minute=0, second=0, microsecond=0)
-            hour_end = hour_start + timedelta(hours=1)
-
-            # 겹치는 시간 계산
-            overlap_start = max(start_time, hour_start)
-            overlap_end = min(end_time, hour_end)
-
-            if overlap_start < overlap_end:
-                seconds = (overlap_end - overlap_start).total_seconds()
-                if tag_id not in hourly_data[hour]:
-                    hourly_data[hour][tag_id] = 0
-                hourly_data[hour][tag_id] += seconds
+        seconds = row.get('total_seconds', 0) or 0
+        hourly_data[hour].append({
+            "tag_id": row['tag_id'],
+            "tag_name": tag_name,
+            "tag_color": row.get('tag_color', '#888888'),
+            "seconds": int(seconds),
+            "minutes": round(seconds / 60, 1)
+        })
 
     # 결과 포맷팅
-    result = []
-    for hour in hours:
-        hour_stats = {
-            "hour": hour,
-            "tags": []
-        }
-        for tag_id, seconds in hourly_data[hour].items():
-            tag = tags.get(tag_id, {})
-            tag_name = tag.get('name', 'Unknown')
-            # 자리비움 제외
-            if tag_name == '자리비움':
-                continue
-            hour_stats["tags"].append({
-                "tag_id": tag_id,
-                "tag_name": tag_name,
-                "tag_color": tag.get('color', '#888888'),
-                "seconds": int(seconds),
-                "minutes": round(seconds / 60, 1)
-            })
-        result.append(hour_stats)
+    result = [{"hour": h, "tags": hourly_data[h]} for h in range(24)]
 
     return {
         "date": date,

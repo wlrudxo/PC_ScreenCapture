@@ -527,6 +527,26 @@ class DatabaseManager:
         """, (start_date, end_date))
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_hourly_stats(self, start_date: datetime,
+                         end_date: datetime) -> List[Dict[str, Any]]:
+        """시간대별 태그 통계 (SQL 집계)"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                CAST(strftime('%H', a.start_time) AS INTEGER) AS hour,
+                t.id AS tag_id,
+                t.name AS tag_name,
+                t.color AS tag_color,
+                SUM((julianday(COALESCE(a.end_time, datetime('now', 'localtime'))) -
+                     julianday(a.start_time)) * 86400) AS total_seconds
+            FROM activities a
+            JOIN tags t ON a.tag_id = t.id
+            WHERE a.start_time >= ? AND a.start_time < ?
+            GROUP BY hour, t.id
+            ORDER BY hour, total_seconds DESC
+        """, (start_date, end_date))
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_stats_by_process(self, start_date: datetime,
                             end_date: datetime, limit: int = 10) -> List[Dict[str, Any]]:
         """프로세스별 사용 시간 통계 (__IDLE__, __LOCKED__, LockApp.exe 제외)"""

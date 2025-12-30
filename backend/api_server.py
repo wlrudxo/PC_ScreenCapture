@@ -1193,6 +1193,25 @@ async def set_autostart_status(data: dict):
     return {"enabled": AutoStartManager.is_enabled()}
 
 
+@app.get("/api/settings/theme")
+async def get_theme():
+    """테마 설정 조회"""
+    db = get_db()
+    theme = db.get_setting('theme', 'dark')
+    return {"theme": theme}
+
+
+@app.put("/api/settings/theme")
+async def set_theme(data: dict):
+    """테마 설정 변경"""
+    db = get_db()
+    theme = data.get('theme', 'dark')
+    if theme not in ('dark', 'light'):
+        raise HTTPException(400, "Invalid theme value")
+    db.set_setting('theme', theme)
+    return {"theme": theme}
+
+
 @app.get("/api/data/db/backup")
 async def backup_database(include_media: bool = Query(True)):
     """데이터베이스 + 알림 파일 백업 (zip 다운로드)"""

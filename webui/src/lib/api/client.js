@@ -3,6 +3,14 @@
  * - file:// 프로토콜: PyWebView에서 로드, 절대 경로 사용
  * - http(s)://: 개발 서버나 프록시 사용, 상대 경로 사용
  */
+export function getApiBaseUrl() {
+  if (typeof window === 'undefined') return '/api';
+  if (window.location.protocol === 'file:') {
+    return 'http://127.0.0.1:8000';
+  }
+  return '';
+}
+
 function getApiBase() {
   if (window.location.protocol === 'file:') {
     return 'http://127.0.0.1:8000/api';

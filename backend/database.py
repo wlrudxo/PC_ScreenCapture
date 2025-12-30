@@ -175,6 +175,21 @@ class DatabaseManager:
             )
         """)
 
+        # 마이그레이션: 기존 사용자는 이미 태그/룰을 커스텀했으므로 seeded 처리
+        cursor.execute("SELECT value FROM settings WHERE key='default_tags_seeded'")
+        if not cursor.fetchone():
+            # 시스템 태그 외에 다른 태그가 있으면 기존 사용자로 간주
+            cursor.execute("SELECT COUNT(*) FROM tags WHERE name NOT IN ('자리비움', '미분류')")
+            if cursor.fetchone()[0] > 0:
+                cursor.execute("INSERT INTO settings (key, value) VALUES ('default_tags_seeded', '1')")
+
+        cursor.execute("SELECT value FROM settings WHERE key='default_rules_seeded'")
+        if not cursor.fetchone():
+            # 화면 잠금 외의 룰이 있으면 기존 사용자로 간주
+            cursor.execute("SELECT COUNT(*) FROM rules WHERE name != '화면 잠금'")
+            if cursor.fetchone()[0] > 0:
+                cursor.execute("INSERT INTO settings (key, value) VALUES ('default_rules_seeded', '1')")
+
         # alert_sounds 테이블 (알림음 목록)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS alert_sounds (
@@ -206,18 +221,29 @@ class DatabaseManager:
             )
         """)
 
-        # 기본 태그 삽입 (이미 존재하면 무시)
-        default_tags = [
-            ('업무', '#4CAF50', 'work'),
-            ('휴식', '#EF5350', 'non_work'),
-            ('기타', '#78909C', 'other'),
+        # 시스템 필수 태그 (항상 존재해야 함)
+        system_tags = [
             ('자리비움', '#9E9E9E', 'other'),
             ('미분류', '#607D8B', 'other'),
         ]
-        for name, color, category in default_tags:
+        for name, color, category in system_tags:
             cursor.execute("""
                 INSERT OR IGNORE INTO tags (name, color, category) VALUES (?, ?, ?)
             """, (name, color, category))
+
+        # 기본 태그 삽입 (최초 1회만)
+        cursor.execute("SELECT value FROM settings WHERE key='default_tags_seeded'")
+        if not cursor.fetchone():
+            default_tags = [
+                ('업무', '#4CAF50', 'work'),
+                ('휴식', '#EF5350', 'non_work'),
+                ('기타', '#78909C', 'other'),
+            ]
+            for name, color, category in default_tags:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO tags (name, color, category) VALUES (?, ?, ?)
+                """, (name, color, category))
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('default_tags_seeded', '1')")
 
         # 기본 룰 삽입 (이미 존재하면 무시)
         # 먼저 태그 ID 조회
@@ -234,22 +260,25 @@ class DatabaseManager:
                     VALUES ('화면 잠금', 100, '__LOCKED__,__IDLE__', ?)
                 """, (away_tag_id,))
 
-        # 기본 분류 룰 삽입
-        default_rules = [
-            ('업무 분류규칙', 99, '*Matlab*,*windowsterminal*,*powerpnt*', '업무'),
-            ('휴식 분류규칙', 99, '*kakaotalk*,*ActivityTracker*', '휴식'),
-            ('기타 분류규칙', 1, '*explorer*', '기타'),
-        ]
-        for rule_name, priority, process_pattern, tag_name in default_rules:
-            cursor.execute("SELECT COUNT(*) FROM rules WHERE name=?", (rule_name,))
-            if cursor.fetchone()[0] == 0:
+        # 기본 분류 룰 삽입 (최초 1회만)
+        cursor.execute("SELECT value FROM settings WHERE key='default_rules_seeded'")
+        seeded = cursor.fetchone()
+        if not seeded:
+            default_rules = [
+                ('업무 분류규칙', 99, '*Matlab*,*windowsterminal*,*powerpnt*', '업무'),
+                ('휴식 분류규칙', 99, '*kakaotalk*,*ActivityTracker*', '휴식'),
+                ('기타 분류규칙', 1, '*explorer*', '기타'),
+            ]
+            for rule_name, priority, process_pattern, tag_name in default_rules:
                 cursor.execute("SELECT id FROM tags WHERE name=?", (tag_name,))
                 tag_row = cursor.fetchone()
                 if tag_row:
                     cursor.execute("""
-                        INSERT INTO rules (name, priority, process_pattern, tag_id)
+                        INSERT OR IGNORE INTO rules (name, priority, process_pattern, tag_id)
                         VALUES (?, ?, ?, ?)
                     """, (rule_name, priority, process_pattern, tag_row[0]))
+            # 시드 완료 표시
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('default_rules_seeded', '1')")
 
         self._reconcile_alert_assets()
         self._seed_alert_assets()

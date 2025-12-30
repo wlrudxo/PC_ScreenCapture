@@ -1,18 +1,42 @@
 /**
- * Theme store - localStorage 기반 다크/라이트 테마 관리
+ * Theme store - 서버 DB 기반 다크/라이트 테마 관리
  */
 import { writable } from 'svelte/store';
-
-const STORAGE_KEY = 'activity-tracker-theme';
+import { getApiBaseUrl } from '../api/client.js';
 
 function createThemeStore() {
-  // 초기값: localStorage에서 로드, 없으면 'dark' (기본값)
-  const getInitialTheme = () => {
-    if (typeof window === 'undefined') return 'dark';
-    return localStorage.getItem(STORAGE_KEY) || 'dark';
-  };
+  const { subscribe, set, update } = writable('dark');
 
-  const { subscribe, set, update } = writable(getInitialTheme());
+  /**
+   * 서버에서 테마 로드
+   */
+  async function loadFromServer() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/settings/theme`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.theme || 'dark';
+      }
+    } catch (e) {
+      console.warn('[Theme] Failed to load from server:', e);
+    }
+    return 'dark';
+  }
+
+  /**
+   * 서버에 테마 저장
+   */
+  async function saveToServer(theme) {
+    try {
+      await fetch(`${getApiBaseUrl()}/api/settings/theme`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme })
+      });
+    } catch (e) {
+      console.warn('[Theme] Failed to save to server:', e);
+    }
+  }
 
   return {
     subscribe,
@@ -22,11 +46,9 @@ function createThemeStore() {
      * @param {'light' | 'dark'} newTheme
      */
     set: (newTheme) => {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, newTheme);
-        applyTheme(newTheme);
-      }
+      applyTheme(newTheme);
       set(newTheme);
+      saveToServer(newTheme);
     },
 
     /**
@@ -35,10 +57,8 @@ function createThemeStore() {
     toggle: () => {
       update(current => {
         const newTheme = current === 'dark' ? 'light' : 'dark';
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(STORAGE_KEY, newTheme);
-          applyTheme(newTheme);
-        }
+        applyTheme(newTheme);
+        saveToServer(newTheme);
         return newTheme;
       });
     },
@@ -46,9 +66,12 @@ function createThemeStore() {
     /**
      * 초기화 (앱 시작 시 호출)
      */
-    init: () => {
+    init: async () => {
       if (typeof window === 'undefined') return;
-      const savedTheme = localStorage.getItem(STORAGE_KEY) || 'dark';
+      // 먼저 dark 적용 (깜빡임 방지)
+      applyTheme('dark');
+      // 서버에서 실제 테마 로드
+      const savedTheme = await loadFromServer();
       applyTheme(savedTheme);
       set(savedTheme);
     }

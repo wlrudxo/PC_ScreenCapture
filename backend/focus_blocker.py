@@ -17,6 +17,13 @@ class FocusBlocker:
 
     SW_MINIMIZE = 6
 
+    # 절대 차단하지 않는 프로세스 목록 (앱 자체 + 시스템 필수 프로세스)
+    NEVER_BLOCK_PROCESSES = frozenset([
+        "activitytracker.exe",  # 빌드된 앱
+        "pythonw.exe",          # 개발 모드 (pyw)
+        "python.exe",           # 개발 모드 (py)
+    ])
+
     def __init__(self, db_manager):
         self.db_manager = db_manager
         # tag_id -> {start_time: "HH:MM", end_time: "HH:MM"} or None (항상 차단)
@@ -96,18 +103,23 @@ class FocusBlocker:
             print(f"[FocusBlocker] 창 최소화 오류: {e}")
             return False
 
-    def check_and_block(self, tag_id: int, hwnd: int) -> bool:
+    def check_and_block(self, tag_id: int, hwnd: int, process_name: str = "") -> bool:
         """
         태그 확인 후 차단 대상이면 창 최소화
 
         Args:
             tag_id: 현재 활동의 태그 ID
             hwnd: 감지 시점의 창 핸들
+            process_name: 프로세스 이름 (ActivityTracker 자체는 차단 안 함)
 
         Returns:
             True: 차단 실행됨
-            False: 차단 대상 아님
+            False: 차단 대상 아님 또는 예외 프로세스
         """
+        # ActivityTracker 자체는 절대 차단하지 않음 (데드락 방지)
+        if process_name and process_name.lower() in self.NEVER_BLOCK_PROCESSES:
+            return False
+
         if self.is_blocked(tag_id):
             self.minimize_window(hwnd)
             return True

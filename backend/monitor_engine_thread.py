@@ -134,7 +134,8 @@ class MonitorEngineThread(threading.Thread):
                     # 차단 체크 (사용자가 최소화된 창을 다시 열었을 경우)
                     hwnd = activity_info.get('hwnd')
                     if hwnd:
-                        self.focus_blocker.check_and_block(self.current_tag_id, hwnd)
+                        process_name = activity_info.get('process_name', '')
+                        self.focus_blocker.check_and_block(self.current_tag_id, hwnd, process_name)
 
                 # 설정된 폴링 간격만큼 대기
                 self._stop_event.wait(timeout=polling_interval)
@@ -325,7 +326,8 @@ class MonitorEngineThread(threading.Thread):
             # 태그 차단 체크
             hwnd = info.get('hwnd')
             if hwnd:
-                self.focus_blocker.check_and_block(tag_id, hwnd)
+                process_name = info.get('process_name', '')
+                self.focus_blocker.check_and_block(tag_id, hwnd, process_name)
 
         except Exception as e:
             print(f"[MonitorEngine] 활동 저장 오류: {e}")

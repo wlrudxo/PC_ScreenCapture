@@ -35,6 +35,9 @@
   let unclassifiedGroups = [];
   let selectedGroups = new Set();
 
+  // Modal backdrop click tracking (드래그 중 모달 닫힘 방지)
+  let backdropMousedown = false;
+
   // Form data
   let tagForm = { name: '', color: '#4CAF50', category: 'other' };
 
@@ -512,8 +515,11 @@
 
 <!-- Tag Modal -->
 {#if showTagModal}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={() => showTagModal = false}>
-    <div class="bg-bg-card rounded-xl p-6 w-96 border border-border" on:click|stopPropagation>
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    on:mousedown|self={() => backdropMousedown = true}
+    on:click={() => { if (backdropMousedown) showTagModal = false; backdropMousedown = false; }}
+  >
+    <div class="bg-bg-card rounded-xl p-6 w-96 border border-border" on:click|stopPropagation on:mousedown|stopPropagation>
       <h3 class="text-lg font-semibold text-text-primary mb-4">
         {editingTag ? '태그 수정' : '태그 추가'}
       </h3>
@@ -588,8 +594,11 @@
 
 <!-- Rule Modal -->
 {#if showRuleModal}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={() => showRuleModal = false}>
-    <div class="bg-bg-card rounded-xl p-6 w-[500px] border border-border" on:click|stopPropagation>
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    on:mousedown|self={() => backdropMousedown = true}
+    on:click={() => { if (backdropMousedown) showRuleModal = false; backdropMousedown = false; }}
+  >
+    <div class="bg-bg-card rounded-xl p-6 w-[500px] border border-border" on:click|stopPropagation on:mousedown|stopPropagation>
       <h3 class="text-lg font-semibold text-text-primary mb-4">
         {editingRule ? '규칙 수정' : '규칙 추가'}
       </h3>
@@ -708,8 +717,11 @@
 
 <!-- Delete Unclassified Modal -->
 {#if showDeleteModal}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={() => showDeleteModal = false}>
-    <div class="bg-bg-card rounded-xl p-6 w-[800px] max-h-[80vh] border border-border flex flex-col" on:click|stopPropagation>
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    on:mousedown|self={() => backdropMousedown = true}
+    on:click={() => { if (backdropMousedown) showDeleteModal = false; backdropMousedown = false; }}
+  >
+    <div class="bg-bg-card rounded-xl p-6 w-[800px] max-h-[80vh] border border-border flex flex-col" on:click|stopPropagation on:mousedown|stopPropagation>
       <h3 class="text-lg font-semibold text-text-primary mb-4">
         미분류 항목 삭제 ({unclassifiedGroups.reduce((sum, g) => sum + g.count, 0)}개)
       </h3>

@@ -58,6 +58,7 @@
         id: tag.tag_id,
         name: tag.tag_name,
         color: tag.tag_color,
+        category: tag.category || 'other',
         duration: Math.round(tag.total_seconds || 0),
         percentage: totalSeconds > 0 ? Math.round((tag.total_seconds / totalSeconds) * 100) : 0
       }));
@@ -101,10 +102,10 @@
 
   function loadDemoData() {
     tagStats = [
-      { id: 1, name: '업무', color: '#4CAF50', duration: 14400, percentage: 60 },
-      { id: 2, name: '휴식', color: '#FF5722', duration: 4800, percentage: 20 },
-      { id: 3, name: '자리비움', color: '#9E9E9E', duration: 2400, percentage: 10 },
-      { id: 4, name: '미분류', color: '#607D8B', duration: 2400, percentage: 10 }
+      { id: 1, name: '업무', color: '#4CAF50', category: 'work', duration: 14400, percentage: 60 },
+      { id: 2, name: '휴식', color: '#FF5722', category: 'non_work', duration: 4800, percentage: 20 },
+      { id: 3, name: '자리비움', color: '#9E9E9E', category: 'other', duration: 2400, percentage: 10 },
+      { id: 4, name: '미분류', color: '#607D8B', category: 'other', duration: 2400, percentage: 10 }
     ];
     processStats = [
       { name: 'chrome.exe', duration: 9600, percentage: 40 },
@@ -120,6 +121,11 @@
       tagSwitches: 42
     };
   }
+
+  // 업무 시간 계산 (category='work'인 태그들의 합)
+  $: workSeconds = tagStats
+    .filter(t => t.category === 'work')
+    .reduce((sum, t) => sum + t.duration, 0);
 
   function updateCharts() {
     // Pie Chart 업데이트
@@ -304,8 +310,8 @@
       <div class="text-2xl font-bold text-text-primary">{formatDuration(summaryStats.totalSeconds)}</div>
     </div>
     <div class="bg-bg-card rounded-xl p-4 border border-border">
-      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">활동 횟수</div>
-      <div class="text-2xl font-bold text-text-primary">{summaryStats.activityCount}회</div>
+      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">업무 시간</div>
+      <div class="text-2xl font-bold text-green-400">{formatDuration(workSeconds)}</div>
     </div>
     <div class="bg-bg-card rounded-xl p-4 border border-border">
       <div class="text-text-muted text-xs uppercase tracking-wide mb-1">첫 활동</div>
@@ -316,8 +322,8 @@
       <div class="text-2xl font-bold text-text-primary">{summaryStats.lastActivity}</div>
     </div>
     <div class="bg-bg-card rounded-xl p-4 border border-border">
-      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">태그 전환</div>
-      <div class="text-2xl font-bold text-text-primary">{summaryStats.tagSwitches}회</div>
+      <div class="text-text-muted text-xs uppercase tracking-wide mb-1">활동 횟수</div>
+      <div class="text-2xl font-bold text-text-primary">{summaryStats.activityCount}회</div>
     </div>
   </div>
 

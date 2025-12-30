@@ -210,6 +210,7 @@ async def get_dashboard_daily(date: str = Query(..., description="YYYY-MM-DD for
 
     # 태그별 통계
     tag_stats = db.get_stats_by_tag(start, end)
+    all_tags = {t['id']: t for t in db.get_all_tags()}
 
     # 프로세스별 통계
     process_stats = db.get_stats_by_process(start, end, limit=10)
@@ -224,8 +225,15 @@ async def get_dashboard_daily(date: str = Query(..., description="YYYY-MM-DD for
         if s.get('tag_name') != '자리비움'
     )
 
-    # 태그 통계에서 자리비움 제외
-    tag_stats = [s for s in tag_stats if s.get('tag_name') != '자리비움']
+    # 태그 통계에서 자리비움 제외 + category 추가
+    tag_stats_filtered = []
+    for s in tag_stats:
+        if s.get('tag_name') == '자리비움':
+            continue
+        tag_info = all_tags.get(s.get('tag_id'), {})
+        s['category'] = tag_info.get('category', 'other')
+        tag_stats_filtered.append(s)
+    tag_stats = tag_stats_filtered
 
     # 첫/마지막 활동 시간 + 태그 전환 횟수 계산
     first_activity = None

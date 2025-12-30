@@ -209,7 +209,8 @@ class DatabaseManager:
         # 기본 태그 삽입 (이미 존재하면 무시)
         default_tags = [
             ('업무', '#4CAF50', 'work'),
-            ('휴식', '#FF5722', 'non_work'),
+            ('휴식', '#EF5350', 'non_work'),
+            ('기타', '#78909C', 'other'),
             ('자리비움', '#9E9E9E', 'other'),
             ('미분류', '#607D8B', 'other'),
         ]
@@ -232,6 +233,23 @@ class DatabaseManager:
                     INSERT INTO rules (name, priority, process_pattern, tag_id)
                     VALUES ('화면 잠금', 100, '__LOCKED__,__IDLE__', ?)
                 """, (away_tag_id,))
+
+        # 기본 분류 룰 삽입
+        default_rules = [
+            ('업무 분류규칙', 99, '*Matlab*,*windowsterminal*,*powerpnt*', '업무'),
+            ('휴식 분류규칙', 99, '*kakaotalk*,*ActivityTracker*', '휴식'),
+            ('기타 분류규칙', 1, '*explorer*', '기타'),
+        ]
+        for rule_name, priority, process_pattern, tag_name in default_rules:
+            cursor.execute("SELECT COUNT(*) FROM rules WHERE name=?", (rule_name,))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("SELECT id FROM tags WHERE name=?", (tag_name,))
+                tag_row = cursor.fetchone()
+                if tag_row:
+                    cursor.execute("""
+                        INSERT INTO rules (name, priority, process_pattern, tag_id)
+                        VALUES (?, ?, ?, ?)
+                    """, (rule_name, priority, process_pattern, tag_row[0]))
 
         self._reconcile_alert_assets()
         self._seed_alert_assets()

@@ -38,6 +38,14 @@
   // Form data
   let tagForm = { name: '', color: '#4CAF50', category: 'other' };
 
+  // 색상 프리셋 (다크 테마에서 잘 보이는 색상들)
+  const colorPresets = [
+    '#EF5350', '#EC407A', '#AB47BC', '#7E57C2', // 빨강, 분홍, 보라, 진보라
+    '#5C6BC0', '#42A5F5', '#29B6F6', '#26C6DA', // 남색, 파랑, 하늘, 청록
+    '#26A69A', '#66BB6A', '#9CCC65', '#D4E157', // 틸, 초록, 연두, 라임
+    '#FFEE58', '#FFA726', '#FF7043', '#78909C'  // 노랑, 주황, 딥오렌지, 회색
+  ];
+
   // 카테고리 옵션
   const categoryOptions = [
     { value: 'work', label: '업무', color: 'text-green-400' },
@@ -383,7 +391,7 @@
                 <span class="font-medium text-text-primary">{tag.name}</span>
               </div>
               <div class="flex items-center gap-1">
-                {#if tag.name !== '미분류'}
+                {#if tag.name !== '미분류' && tag.name !== '자리비움'}
                   <button
                     aria-label="수정"
                     class="p-1.5 rounded hover:bg-bg-hover transition-colors"
@@ -522,6 +530,17 @@
         </div>
         <div>
           <label class="block text-sm text-text-secondary mb-1">색상</label>
+          <div class="grid grid-cols-8 gap-1.5 mb-3">
+            {#each colorPresets as preset}
+              <button
+                type="button"
+                class="w-8 h-8 rounded-lg border-2 transition-all hover:scale-110"
+                style="background-color: {preset}; border-color: {tagForm.color === preset ? 'white' : 'transparent'}"
+                on:click={() => tagForm.color = preset}
+                title={preset}
+              ></button>
+            {/each}
+          </div>
           <div class="flex items-center gap-3">
             <input
               type="color"

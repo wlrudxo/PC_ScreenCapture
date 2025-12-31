@@ -80,8 +80,10 @@ class _LogFilter(logging.Filter):
 try:
     import webview
     WEBVIEW_AVAILABLE = True
-except ImportError:
+    _WEBVIEW_IMPORT_ERROR = None
+except ImportError as e:
     WEBVIEW_AVAILABLE = False
+    _WEBVIEW_IMPORT_ERROR = str(e)
     print("[Warning] pywebview not available, using browser fallback")
 
 import pystray
@@ -375,8 +377,10 @@ class ActivityTrackerApp:
 
                         if dist_status == "NOT_FOUND":
                             print("[Warning] webui/dist not found! Run 'npm run build' in webui folder.")
+                            logging.warning("[WebUI] dist not found. Run 'npm run build' in webui folder.")
                         elif dist_status == "NO_INDEX":
                             print("[Warning] webui/dist/index.html not found!")
+                            logging.warning("[WebUI] dist/index.html not found.")
 
                         logging.info(f"[API Server] Health check OK - API v{api_version}, dist {dist_status}")
                         return True
@@ -666,6 +670,33 @@ def activate_existing_window() -> bool:
 
 def main():
     """메인 함수"""
+    from logging.handlers import RotatingFileHandler
+
+    log_path = AppConfig.get_log_path()
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+    file_handler = RotatingFileHandler(
+        str(log_path),
+        maxBytes=5*1024*1024,  # 5MB
+        backupCount=3,
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    logging.getLogger("pywebview").setLevel(logging.CRITICAL)
+    logging.getLogger("webview").setLevel(logging.CRITICAL)
+    log_filter = _LogFilter(_pywebview_noise)
+    root_logger.addFilter(log_filter)
+    for handler in root_logger.handlers:
+        handler.addFilter(log_filter)
+    logging.getLogger("pywebview").addFilter(log_filter)
+    logging.getLogger("webview").addFilter(log_filter)
+
+    if not WEBVIEW_AVAILABLE and _WEBVIEW_IMPORT_ERROR:
+        logging.error("[App] pywebview import failed: %s", _WEBVIEW_IMPORT_ERROR)
+
     # 이전 API 프로세스의 PID 파일이 남아있으면 정리
     api_pid_path = AppConfig.get_api_pid_path()
     if api_pid_path.exists():
@@ -676,12 +707,14 @@ def main():
 
     # 중복 실행 방지 (포트 열기 전 mutex 체크)
     if not ensure_single_instance():
+        logging.warning("[App] Already running (mutex exists). Exiting.")
         activate_existing_window()
         print("[App] Already running (mutex exists). Exiting.")
         sys.exit(0)
 
     # 중복 실행 방지 (포트 8000 체크)
     if is_port_in_use(8000):
+        logging.warning("[App] Port 8000 in use. Exiting.")
         print("[App] Already running (port 8000 in use). Exiting.")
         sys.exit(0)
 
@@ -709,6 +742,7 @@ def main():
                         conn.close()
                         if result != "ok":
                             print(f"[Restore] Pending ZIP DB integrity failed: {result}")
+                            logging.warning("[Restore] Pending ZIP DB integrity failed: %s", result)
                         else:
                             db_path = AppConfig.get_db_path()
                             wal_path = db_path.with_suffix(".db-wal")
@@ -742,6 +776,7 @@ def main():
                             print("[Restore] Pending ZIP applied successfully")
             except Exception as e:
                 print(f"[Restore] Pending ZIP apply failed: {e}")
+                logging.warning("[Restore] Pending ZIP apply failed: %s", e)
         elif pending_db_path.exists():
             try:
                 conn = sqlite3.connect(str(pending_db_path))
@@ -749,6 +784,7 @@ def main():
                 conn.close()
                 if result != "ok":
                     print(f"[Restore] Pending DB integrity failed: {result}")
+                    logging.warning("[Restore] Pending DB integrity failed: %s", result)
                 else:
                     db_path = AppConfig.get_db_path()
                     wal_path = db_path.with_suffix(".db-wal")
@@ -762,6 +798,9 @@ def main():
                     print("[Restore] Pending DB applied successfully")
             except Exception as e:
                 print(f"[Restore] Pending DB apply failed: {e}")
+                logging.warning("[Restore] Pending DB apply failed: %s", e)
+        else:
+            logging.warning("[Restore] Pending metadata exists, but no pending backup found.")
 
         if applied:
             try:
@@ -772,34 +811,12 @@ def main():
                 pending_meta_path.unlink()
             except Exception as e:
                 print(f"[Restore] Pending cleanup failed: {e}")
+                logging.warning("[Restore] Pending cleanup failed: %s", e)
 
     # 개발 모드 설정
     if '--dev' in sys.argv:
         os.environ['DEV_MODE'] = '1'
         print("[Mode] Development mode enabled")
-
-    from logging.handlers import RotatingFileHandler
-    log_path = AppConfig.get_log_path()
-    root_logger = logging.getLogger()
-    for handler in list(root_logger.handlers):
-        root_logger.removeHandler(handler)
-    file_handler = RotatingFileHandler(
-        str(log_path),
-        maxBytes=5*1024*1024,  # 5MB
-        backupCount=3,
-        encoding='utf-8'
-    )
-    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
-    logging.getLogger("pywebview").setLevel(logging.CRITICAL)
-    logging.getLogger("webview").setLevel(logging.CRITICAL)
-    log_filter = _LogFilter(_pywebview_noise)
-    root_logger.addFilter(log_filter)
-    for handler in root_logger.handlers:
-        handler.addFilter(log_filter)
-    logging.getLogger("pywebview").addFilter(log_filter)
-    logging.getLogger("webview").addFilter(log_filter)
 
     app = ActivityTrackerApp()
 

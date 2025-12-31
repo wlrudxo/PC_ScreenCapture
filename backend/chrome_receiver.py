@@ -5,7 +5,10 @@ import threading
 import asyncio
 import websockets
 import json
+import logging
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class ChromeURLReceiver:
@@ -41,13 +44,13 @@ class ChromeURLReceiver:
         # WebSocket 서버 시작 (websockets 13+ 호환)
         async def serve():
             self.server = await websockets.serve(self._handler, "localhost", self.port)
-            print(f"[ChromeURLReceiver] WebSocket 서버 시작: ws://localhost:{self.port}")
+            logger.info("[ChromeURLReceiver] WebSocket 서버 시작: ws://localhost:%s", self.port)
             await self.server.wait_closed()
 
         try:
             self.loop.run_until_complete(serve())
         except Exception as e:
-            print(f"[ChromeURLReceiver] 서버 종료: {e}")
+            logger.warning("[ChromeURLReceiver] 서버 종료: %s", e)
 
     async def _handler(self, websocket):
         """
@@ -56,7 +59,7 @@ class ChromeURLReceiver:
         Args:
             websocket: WebSocket 연결 객체
         """
-        print(f"[ChromeURLReceiver] Chrome Extension 연결됨")
+        logger.info("[ChromeURLReceiver] Chrome Extension 연결됨")
 
         try:
             async for message in websocket:
@@ -76,12 +79,12 @@ class ChromeURLReceiver:
                         # 로그 출력
                         profile = data.get('profileName', 'Unknown')
                         url = data.get('url', '')
-                        print(f"[ChromeURLReceiver] 📥 [{profile}] URL 수신: {url}")
+                        logger.info("[ChromeURLReceiver] URL 수신: [%s] %s", profile, url)
                 except json.JSONDecodeError:
                     pass  # 잘못된 JSON 무시
 
         except websockets.exceptions.ConnectionClosed:
-            print(f"[ChromeURLReceiver] Chrome Extension 연결 종료됨")
+            logger.info("[ChromeURLReceiver] Chrome Extension 연결 종료됨")
 
     def get_latest_url(self) -> Dict[str, Any]:
         """
@@ -103,7 +106,7 @@ class ChromeURLReceiver:
     def stop(self):
         """WebSocket 서버 종료"""
         import time
-        print("[ChromeURLReceiver] 종료 요청됨")
+        logger.info("[ChromeURLReceiver] 종료 요청됨")
 
         if self.loop and self.loop.is_running():
             # 서버 종료
@@ -119,4 +122,4 @@ class ChromeURLReceiver:
                     break
                 time.sleep(0.1)
 
-        print("[ChromeURLReceiver] WebSocket 서버 종료됨")
+        logger.info("[ChromeURLReceiver] WebSocket 서버 종료됨")

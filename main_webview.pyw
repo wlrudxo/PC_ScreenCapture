@@ -12,7 +12,6 @@ import urllib.request
 import urllib.error
 import threading
 import time
-import asyncio
 import signal
 import webbrowser
 import socket
@@ -89,7 +88,7 @@ import pystray
 from PIL import Image
 import uvicorn
 
-from backend.api_server import app as fastapi_app, ws_manager, set_runtime_engines, set_exit_callback
+from backend.api_server import app as fastapi_app, schedule_broadcast, set_runtime_engines, set_exit_callback
 from backend.database import DatabaseManager
 from backend.monitor_engine_thread import MonitorEngineThread
 from backend.rule_engine import RuleEngine
@@ -391,11 +390,10 @@ class ActivityTrackerApp:
     def _on_activity_detected(self, activity_info: dict):
         """활동 감지 시 WebSocket으로 브로드캐스트"""
         try:
-            # asyncio 이벤트 루프에서 실행
-            asyncio.run(ws_manager.broadcast({
+            schedule_broadcast({
                 "type": "activity_update",
                 "data": activity_info
-            }))
+            })
         except Exception as e:
             print(f"[WebSocket] Broadcast error: {e}")
 

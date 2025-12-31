@@ -37,6 +37,7 @@ _rule_engine = None
 _focus_blocker = None
 _log_generator = None
 _monitor_engine = None
+_event_loop = None
 
 
 def set_runtime_engines(rule_engine, focus_blocker, log_generator=None, monitor_engine=None, exit_callback=None):
@@ -168,12 +169,22 @@ def get_db() -> DatabaseManager:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup - DB는 get_db()에서 lazy init (race condition 방지)
+    global _event_loop
+    _event_loop = asyncio.get_running_loop()
     yield
     # Shutdown
     global db
     if db:
         db.close()
         db = None
+
+
+def schedule_broadcast(message: dict):
+    """WebSocket 브로드캐스트를 서버 이벤트 루프에서 안전하게 실행."""
+    if _event_loop and _event_loop.is_running():
+        asyncio.run_coroutine_threadsafe(ws_manager.broadcast(message), _event_loop)
+    else:
+        asyncio.run(ws_manager.broadcast(message))
 
 
 # === FastAPI App ===
@@ -958,15 +969,14 @@ async def upload_alert_sound(
     from backend.config import AppConfig
 
     # 확장자 검증
-    allowed_ext = {'.wav', '.mp3', '.ogg', '.flac'}
+    allowed_ext = {'.wav'}
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in allowed_ext:
         raise HTTPException(400, f"Unsupported file type. Allowed: {allowed_ext}")
 
     sounds_dir = AppConfig.get_sounds_dir()
 
-    # WAV가 아니면 변환 필요 (클라이언트에서 처리하거나 ffmpeg 사용)
-    # 일단 그대로 저장
+    # WAV만 지원 (재생 엔진 제약)
     output_name = f"{uuid.uuid4().hex}{file_ext}"
     output_path = sounds_dir / output_name
 
@@ -1425,13 +1435,16 @@ def set_exit_callback(callback):
 @app.post("/api/system/exit")
 async def system_exit():
     """앱 종료"""
-    import os
     import threading
 
     def do_exit():
         import time
         time.sleep(0.5)
-        os._exit(0)
+        if _exit_callback:
+            _exit_callback()
+        else:
+            import os
+            os._exit(0)
 
     threading.Thread(target=do_exit, daemon=True).start()
     return {"message": "Shutting down..."}
@@ -1465,6 +1478,26 @@ if _dist_path.exists():
     @app.get("/")
     async def serve_root():
         return HTMLResponse((_dist_path / "index.html").read_text(encoding="utf-8"))
+
+
+def _resolve_resources_path() -> Path:
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "resources")
+    candidates.append(Path(sys.executable).parent / "_internal" / "resources")
+    candidates.append(Path(sys.executable).parent / "resources")
+    candidates.append(Path(__file__).parent.parent / "resources")
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[-1]
+
+
+_resources_path = _resolve_resources_path()
+if _resources_path.exists():
+    app.mount("/resources", StaticFiles(directory=_resources_path), name="resources")
 
     @app.get("/{path:path}")
     async def serve_spa(path: str):

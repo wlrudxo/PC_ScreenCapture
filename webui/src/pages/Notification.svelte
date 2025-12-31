@@ -526,7 +526,7 @@
 <!-- Hidden file inputs -->
 <input
   type="file"
-  accept=".wav,.mp3,.ogg,.flac"
+  accept=".wav"
   bind:this={soundFileInput}
   on:change={handleSoundFileSelect}
   class="hidden"
@@ -632,7 +632,7 @@
         + 사운드 추가
       </button>
 
-      <p class="text-xs text-text-muted">WAV, MP3, OGG, FLAC 지원. 사운드가 없으면 시스템 기본음 재생.</p>
+      <p class="text-xs text-text-muted">WAV만 지원. 사운드가 없으면 시스템 기본음 재생.</p>
     </div>
 
     <!-- Image Settings -->

@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""
+Activity Tracker 릴리즈 빌드 스크립트
+
+사용법:
+    python build_release.py 1.0.3
+    python build_release.py 1.0.3 --force  # 강제 리빌드
+"""
+
+import os
+import sys
+import shutil
+import zipfile
+import subprocess
+from pathlib import Path
+from glob import glob
+
+# === 설정 ===
+PROJECT_DIR = Path(__file__).parent
+DIST_DIR = PROJECT_DIR / "dist"
+APP_DIR = DIST_DIR / "ActivityTracker"
+EXE_PATH = APP_DIR / "ActivityTracker.exe"
+RELEASE_ASSETS_DIR = PROJECT_DIR / "release_assets"
+SPEC_FILE = PROJECT_DIR / "ActivityTracker.spec"
+
+# 빌드 체크할 소스 패턴들
+SOURCE_PATTERNS = [
+    "*.py",
+    "*.pyw",
+    "*.spec",
+    "backend/**/*.py",
+    "webui/dist/**/*",
+    "resources/*",
+]
+
+
+def get_latest_source_mtime() -> float:
+    """소스 파일들 중 가장 최근 수정 시간 반환"""
+    latest = 0.0
+    for pattern in SOURCE_PATTERNS:
+        for path in glob(str(PROJECT_DIR / pattern), recursive=True):
+            if os.path.isfile(path):
+                mtime = os.path.getmtime(path)
+                if mtime > latest:
+                    latest = mtime
+    return latest
+
+
+def need_rebuild() -> bool:
+    """리빌드 필요 여부 확인"""
+    if not EXE_PATH.exists():
+        return True
+
+    exe_mtime = os.path.getmtime(EXE_PATH)
+    source_mtime = get_latest_source_mtime()
+
+    return source_mtime > exe_mtime
+
+
+def run_pyinstaller():
+    """PyInstaller 빌드 실행"""
+    cmd = [sys.executable, "-m", "PyInstaller", str(SPEC_FILE), "--noconfirm"]
+    print(f"  Running: {' '.join(cmd)}")
+
+    result = subprocess.run(cmd, cwd=PROJECT_DIR)
+    if result.returncode != 0:
+        print("  ❌ PyInstaller failed!")
+        sys.exit(1)
+
+
+def zip_chrome_extension() -> Path:
+    """chrome_extension 폴더를 zip으로 압축"""
+    ext_dir = RELEASE_ASSETS_DIR / "chrome_extension"
+    if not ext_dir.exists():
+        print(f"  ❌ chrome_extension not found: {ext_dir}")
+        sys.exit(1)
+
+    zip_path = DIST_DIR / "chrome_extension.zip"
+
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for file in ext_dir.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(ext_dir)
+                zf.write(file, arcname)
+
+    return zip_path
+
+
+def create_release_zip(version: str) -> Path:
+    """최종 릴리즈 zip 생성"""
+    release_name = f"ActivityTracker-v{version}"
+    release_zip = DIST_DIR / f"{release_name}.zip"
+
+    # 기존 파일 삭제
+    if release_zip.exists():
+        release_zip.unlink()
+
+    with zipfile.ZipFile(release_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 1. ActivityTracker 폴더 전체 추가
+        for file in APP_DIR.rglob("*"):
+            if file.is_file():
+                arcname = Path(release_name) / file.relative_to(APP_DIR)
+                zf.write(file, arcname)
+
+        # 2. chrome_extension.zip 추가
+        chrome_zip = DIST_DIR / "chrome_extension.zip"
+        zf.write(chrome_zip, Path(release_name) / "chrome_extension.zip")
+
+        # 3. README.txt 추가
+        readme = RELEASE_ASSETS_DIR / "README.txt"
+        if readme.exists():
+            zf.write(readme, Path(release_name) / "README.txt")
+
+    return release_zip
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python build_release.py <version> [--force]")
+        print("Example: python build_release.py 1.0.3")
+        sys.exit(1)
+
+    version = sys.argv[1].lstrip('v')
+    force = "--force" in sys.argv
+
+    print(f"\n🚀 Building ActivityTracker v{version}\n")
+
+    # Step 1: 빌드 체크
+    print("[1/3] Checking build status...")
+    if force:
+        print("  → Force rebuild requested")
+        run_pyinstaller()
+    elif need_rebuild():
+        print("  → Source changed, rebuilding...")
+        run_pyinstaller()
+    else:
+        print("  → SKIP (already up to date)")
+
+    # Step 2: Chrome extension 압축
+    print("\n[2/3] Zipping chrome_extension...")
+    chrome_zip = zip_chrome_extension()
+    print(f"  → Created: {chrome_zip.name}")
+
+    # Step 3: 릴리즈 패키지 생성
+    print("\n[3/3] Creating release package...")
+    release_zip = create_release_zip(version)
+
+    # 결과 출력
+    size_mb = release_zip.stat().st_size / (1024 * 1024)
+    print(f"\n✅ Created: {release_zip}")
+    print(f"   Size: {size_mb:.1f} MB\n")
+
+
+if __name__ == "__main__":
+    main()

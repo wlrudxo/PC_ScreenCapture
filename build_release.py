@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Activity Tracker 릴리즈 빌드 스크립트
 
@@ -14,6 +15,14 @@ import zipfile
 import subprocess
 from pathlib import Path
 from glob import glob
+
+# Windows cp949 인코딩 문제 해결
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# PyInstaller가 설치된 Python 3.12 경로 (py launcher 사용)
+PYTHON_312 = None
 
 # === 설정 ===
 PROJECT_DIR = Path(__file__).parent
@@ -57,9 +66,29 @@ def need_rebuild() -> bool:
     return source_mtime > exe_mtime
 
 
+def get_python_312() -> str:
+    """PyInstaller가 설치된 Python 3.12 경로 찾기"""
+    global PYTHON_312
+    if PYTHON_312:
+        return PYTHON_312
+
+    # py launcher로 3.12 경로 확인
+    try:
+        result = subprocess.run(
+            ["py", "-3.12", "-c", "import sys; print(sys.executable)"],
+            capture_output=True, text=True, check=True
+        )
+        PYTHON_312 = result.stdout.strip()
+        return PYTHON_312
+    except subprocess.CalledProcessError:
+        print("  ❌ Python 3.12 not found! Install it or check 'py --list'")
+        sys.exit(1)
+
+
 def run_pyinstaller():
-    """PyInstaller 빌드 실행"""
-    cmd = [sys.executable, "-m", "PyInstaller", str(SPEC_FILE), "--noconfirm"]
+    """PyInstaller 빌드 실행 (Python 3.12 사용)"""
+    python = get_python_312()
+    cmd = [python, "-m", "PyInstaller", str(SPEC_FILE), "--noconfirm"]
     print(f"  Running: {' '.join(cmd)}")
 
     result = subprocess.run(cmd, cwd=PROJECT_DIR)

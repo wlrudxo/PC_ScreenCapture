@@ -2,8 +2,9 @@
 집중 모드 - 태그 기반 창 차단 유틸리티
 """
 from ctypes import windll
-from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Dict
+
+from backend.focus_time import is_in_block_time
 
 
 class FocusBlocker:
@@ -26,8 +27,8 @@ class FocusBlocker:
 
     def __init__(self, db_manager):
         self.db_manager = db_manager
-        # tag_id -> {start_time: "HH:MM", end_time: "HH:MM"} or None (항상 차단)
-        self._blocked_tags: Dict[int, Optional[Dict[str, str]]] = {}
+        # tag_id -> {start_time: "HH:MM", end_time: "HH:MM"}
+        self._blocked_tags: Dict[int, Dict[str, str]] = {}
         self._load_blocked_tags()
 
     def _load_blocked_tags(self):
@@ -41,11 +42,9 @@ class FocusBlocker:
                     end = t.get('block_end_time')
                     if start and end:
                         self._blocked_tags[t['id']] = {
-                            'start_time': start,
-                            'end_time': end
+                            "start_time": start,
+                            "end_time": end,
                         }
-                    else:
-                        self._blocked_tags[t['id']] = None  # 항상 차단
         except Exception as e:
             print(f"[FocusBlocker] 차단 태그 로드 오류: {e}")
             self._blocked_tags = {}
@@ -54,33 +53,12 @@ class FocusBlocker:
         """차단 태그 목록 다시 로드 (설정 변경 시 호출)"""
         self._load_blocked_tags()
 
-    def _is_in_time_range(self, start_time: str, end_time: str) -> bool:
-        """현재 시간이 차단 시간대 내인지 확인"""
-        try:
-            now = datetime.now().time()
-            start = datetime.strptime(start_time, "%H:%M").time()
-            end = datetime.strptime(end_time, "%H:%M").time()
-
-            if start <= end:
-                # 일반 케이스: 10:00 ~ 18:00 (18:00 미만)
-                return start <= now < end
-            else:
-                # 자정 넘는 케이스: 22:00 ~ 06:00
-                return now >= start or now < end
-        except Exception as e:
-            print(f"[FocusBlocker] 시간 파싱 오류: {e}")
-            return True  # 파싱 실패 시 차단
-
     def is_blocked(self, tag_id: int) -> bool:
         """해당 태그가 현재 시간에 차단 대상인지 확인"""
-        if tag_id not in self._blocked_tags:
+        time_range = self._blocked_tags.get(tag_id)
+        if not time_range:
             return False
-
-        time_range = self._blocked_tags[tag_id]
-        if time_range is None:
-            return False  # 시간대 미설정 = 차단 안 함 (설정 잠금 방지)
-
-        return self._is_in_time_range(time_range['start_time'], time_range['end_time'])
+        return is_in_block_time(time_range["start_time"], time_range["end_time"])
 
     def minimize_window(self, hwnd: int) -> bool:
         """

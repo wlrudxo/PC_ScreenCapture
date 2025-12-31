@@ -95,6 +95,7 @@ from backend.monitor_engine_thread import MonitorEngineThread
 from backend.rule_engine import RuleEngine
 from backend.config import AppConfig
 from backend.log_generator import ActivityLogGenerator
+from backend.focus_time import is_in_block_time
 
 # Silence pywebview error spam (native object introspection).
 logging.getLogger("pywebview").disabled = True
@@ -453,9 +454,6 @@ class ActivityTrackerApp:
             tags = self.db_manager.get_all_tags()
             active_blocks = []
 
-            now = datetime.now()
-            current_minutes = now.hour * 60 + now.minute
-
             for tag in tags:
                 if not tag.get('block_enabled'):
                     continue
@@ -468,19 +466,7 @@ class ActivityTrackerApp:
                 if not start_time or not end_time:
                     continue
 
-                start_h, start_m = map(int, start_time.split(':'))
-                end_h, end_m = map(int, end_time.split(':'))
-                start_minutes = start_h * 60 + start_m
-                end_minutes = end_h * 60 + end_m
-
-                # 시간 범위 체크
-                if start_minutes <= end_minutes:
-                    is_active = start_minutes <= current_minutes < end_minutes
-                else:
-                    # 자정 넘는 경우 (22:00 ~ 02:00)
-                    is_active = current_minutes >= start_minutes or current_minutes < end_minutes
-
-                if is_active:
+                if is_in_block_time(start_time, end_time):
                     active_blocks.append(tag['name'])
 
             return active_blocks

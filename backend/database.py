@@ -614,21 +614,6 @@ class DatabaseManager:
         """, (start_date, end_date, limit))
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_timeline(self, date: datetime, limit: int = 100) -> List[Dict[str, Any]]:
-        """특정 날짜의 타임라인"""
-        start = datetime.combine(date.date(), datetime.min.time())
-        end = start + timedelta(days=1)
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT a.*, t.name as tag_name, t.color as tag_color
-            FROM activities a
-            LEFT JOIN tags t ON a.tag_id = t.id
-            WHERE a.start_time >= ? AND a.start_time < ?
-            ORDER BY a.start_time DESC
-            LIMIT ?
-        """, (start, end, limit))
-        return [dict(row) for row in cursor.fetchall()]
-
     # === 룰 관리 ===
     def get_all_rules(self, enabled_only: bool = False,
                      order_by: str = 'priority DESC') -> List[Dict[str, Any]]:
@@ -709,12 +694,6 @@ class DatabaseManager:
             ORDER BY start_time DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
-
-    def get_activities_count(self) -> int:
-        """전체 활동 개수 조회"""
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM activities")
-        return cursor.fetchone()[0]
 
     def get_unclassified_activities(self) -> List[Dict[str, Any]]:
         """미분류 태그를 가진 모든 활동 조회"""

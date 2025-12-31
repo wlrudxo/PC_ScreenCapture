@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Chart, registerables } from 'chart.js';
   import { api } from '../lib/api/client.js';
-  import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate } from '../lib/stores/app.js';
+  import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate, shiftLocalDate } from '../lib/stores/app.js';
   import { activityUpdated } from '../lib/stores/websocket.js';
 
   Chart.register(...registerables);
@@ -232,9 +232,7 @@
   }
 
   function changeDate(delta) {
-    const current = new Date($selectedDate);
-    current.setDate(current.getDate() + delta);
-    $selectedDate = formatLocalDate(current);
+    $selectedDate = shiftLocalDate($selectedDate, delta);
   }
 
   onMount(() => {

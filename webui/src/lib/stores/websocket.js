@@ -3,9 +3,6 @@ import { writable } from 'svelte/store';
 // WebSocket 연결 상태
 export const wsConnected = writable(false);
 
-// 최신 활동 정보
-export const latestActivity = writable(null);
-
 // 업데이트 이벤트 (컴포넌트에서 구독)
 export const activityUpdated = writable(0);
 
@@ -64,7 +61,6 @@ export function connectWebSocket() {
         console.log('[WebSocket] Received:', data);
 
         if (data.type === 'activity_update') {
-          latestActivity.set(data.data);
           // 업데이트 카운터 증가 (컴포넌트에서 반응하도록)
           activityUpdated.update(n => n + 1);
         }

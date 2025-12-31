@@ -8,6 +8,12 @@ export function formatLocalDate(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+export function shiftLocalDate(dateString, deltaDays) {
+  const current = new Date(dateString);
+  current.setDate(current.getDate() + deltaDays);
+  return formatLocalDate(current);
+}
+
 // Selected date for dashboard/timeline
 export const selectedDate = writable(formatLocalDate());
 

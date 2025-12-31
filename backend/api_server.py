@@ -28,6 +28,7 @@ from collections import defaultdict
 from urllib.parse import urlparse
 
 from backend.database import DatabaseManager
+from backend.focus_time import DEFAULT_BLOCK_START, DEFAULT_BLOCK_END, is_in_block_time
 
 
 # === Runtime Engine References ===
@@ -791,7 +792,7 @@ async def get_focus_status():
         start_time = tag.get('block_start_time')
         end_time = tag.get('block_end_time')
 
-        if _is_in_block_time(start_time, end_time):
+        if is_in_block_time(start_time, end_time):
             active_blocks.append({
                 "id": tag['id'],
                 "name": tag['name'],
@@ -803,30 +804,6 @@ async def get_focus_status():
         "hasActiveBlocks": len(active_blocks) > 0,
         "activeBlocks": active_blocks
     }
-
-
-def _is_in_block_time(start_time: str, end_time: str) -> bool:
-    """현재 시간이 차단 시간대 내인지 확인 (자정 넘김 지원)"""
-    if not start_time or not end_time:
-        return False  # 시간 미설정 = 차단 안 함 (설정 잠금 방지)
-
-    try:
-        now = datetime.now()
-        current_minutes = now.hour * 60 + now.minute
-
-        start_h, start_m = map(int, start_time.split(':'))
-        end_h, end_m = map(int, end_time.split(':'))
-        start_minutes = start_h * 60 + start_m
-        end_minutes = end_h * 60 + end_m
-
-        if start_minutes <= end_minutes:
-            # 일반 케이스: 09:00 ~ 18:00 (18:00 미만)
-            return start_minutes <= current_minutes < end_minutes
-        else:
-            # 자정 넘는 케이스: 22:00 ~ 02:00
-            return current_minutes >= start_minutes or current_minutes < end_minutes
-    except:
-        return True  # 파싱 실패 시 차단 중으로 간주
 
 
 class EmergencyResetRequest(BaseModel):
@@ -884,10 +861,19 @@ async def update_focus_settings(tag_id: int, data: TagUpdate):
         start_time = existing.get('block_start_time')
         end_time = existing.get('block_end_time')
 
-        if _is_in_block_time(start_time, end_time):
+        if is_in_block_time(start_time, end_time):
             raise HTTPException(403, "Cannot modify during active block period")
 
     update_data = data.model_dump(exclude_unset=True)
+    if update_data.get("block_enabled") is True:
+        start_time = update_data.get("block_start_time") or existing.get("block_start_time")
+        end_time = update_data.get("block_end_time") or existing.get("block_end_time")
+        if not start_time:
+            start_time = DEFAULT_BLOCK_START
+        if not end_time:
+            end_time = DEFAULT_BLOCK_END
+        update_data.setdefault("block_start_time", start_time)
+        update_data.setdefault("block_end_time", end_time)
     if update_data:
         db.update_tag(tag_id, **update_data)
         _reload_focus_blocker()

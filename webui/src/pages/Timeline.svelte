@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
   import { getContrastingTextColor } from '../lib/utils/color.js';
-  import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate } from '../lib/stores/app.js';
+  import { selectedDate, formattedDate, formatDuration, formatTime, formatLocalDate, shiftLocalDate } from '../lib/stores/app.js';
   import { activityUpdated } from '../lib/stores/websocket.js';
 
   let loading = true;
@@ -127,9 +127,7 @@
   }
 
   function changeDate(delta) {
-    const current = new Date($selectedDate);
-    current.setDate(current.getDate() + delta);
-    $selectedDate = formatLocalDate(current);
+    $selectedDate = shiftLocalDate($selectedDate, delta);
   }
 
   function handleTagFilter(event) {

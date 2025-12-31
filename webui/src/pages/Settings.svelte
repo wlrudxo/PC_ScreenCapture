@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client.js';
   import { toast } from '../lib/stores/toast.js';
-  import { theme } from '../lib/stores/theme.js';
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
   import HelpModal from '../lib/components/HelpModal.svelte';
   import HelpButton from '../lib/components/HelpButton.svelte';

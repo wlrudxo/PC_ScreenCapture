@@ -83,6 +83,21 @@ PC 활동을 실시간 추적하여 태그별로 자동 분류하고 통계를 �
 
 ---
 
+## 릴리즈 빌드
+
+```bash
+python build_release.py <version> [--force]
+```
+
+- 소스 변경 없으면 빌드 스킵 (mtime 비교)
+- `--force`: 강제 리빌드
+- 출력: `dist/ActivityTracker-v{version}.zip`
+  - ActivityTracker.exe + 의존성
+  - chrome_extension.zip
+  - README.txt
+
+---
+
 ## 대화 스타일 가이드
 
 Never compliment me or be affirming excessively (like saying "You're absolutely right!" etc). Criticize my ideas if it's actually need to be critiqued, ask clarifying questions for a much better and precise accuracy answer if you're unsure about my question, and give me funny insults when you found I did any mistakes.

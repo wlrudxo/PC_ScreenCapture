@@ -24,62 +24,15 @@
   let pieChart;
   let barChart;
   let lastRefresh = 0;
-  let loadSequence = 0;
-  let pendingCount = 0;
-  let loadingWatchdog = null;
+  let hasMounted = false;
+  let lastLoadedDate = null;
+  let inFlight = false;
+  let queuedLoad = null;
+  let hasDelayedInit = false;
 
-  function appendDiagLog(message, data = null) {
-    if (typeof window === 'undefined') return;
-    try {
-      const runId = window.__diagRunId || localStorage.getItem('debug.frontendRunId') || null;
-      const entry = {
-        ts: new Date().toISOString(),
-        message,
-        data,
-        runId
-      };
-      const existing = JSON.parse(localStorage.getItem('debug.frontendLogs') || '[]');
-      existing.push(entry);
-      const trimmed = existing.slice(-1000);
-      localStorage.setItem('debug.frontendLogs', JSON.stringify(trimmed));
-      const baseUrl = (window.location.protocol === 'file:')
-        ? 'http://127.0.0.1:8000'
-        : '';
-      fetch(`${baseUrl}/api/frontend-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-        keepalive: true
-      }).catch(() => {});
-    } catch (err) {
-      console.warn('[Diag] Failed to store log', err);
-    }
-  }
-
-  function scheduleLoadingWatchdog() {
-    if (loadingWatchdog) {
-      clearTimeout(loadingWatchdog);
-    }
-    loadingWatchdog = setTimeout(() => {
-      if (loading) {
-        console.warn('[Dashboard] loading still true after 5000ms', { pendingCount });
-        appendDiagLog('dashboard.loading_still_true', { pendingCount });
-      }
-    }, 5000);
-  }
-
-  $: {
-    if (loading) {
-      console.log('[Dashboard] loading=true', { pendingCount });
-      appendDiagLog('dashboard.loading_true', { pendingCount });
-    } else {
-      console.log('[Dashboard] loading=false', { pendingCount });
-      appendDiagLog('dashboard.loading_false', { pendingCount });
-    }
-  }
-
-  // 날짜 변경 시 데이터 다시 로드
-  $: if ($selectedDate) {
+  // 날짜 변경 시 데이터 다시 로드 (중복 호출 방지)
+  $: if (hasMounted && $selectedDate && pieChart && barChart && $selectedDate !== lastLoadedDate) {
+    lastLoadedDate = $selectedDate;
     loadDashboardData($selectedDate);
   }
 
@@ -93,21 +46,17 @@
   }
 
   async function loadDashboardData(date, { silent = false } = {}) {
-    const loadId = ++loadSequence;
-    const start = (typeof performance !== 'undefined' && performance.now)
-      ? performance.now()
-      : Date.now();
-    const warnTimer = setTimeout(() => {
-      console.warn(`[Dashboard] load still pending #${loadId}`, { date, silent });
-      appendDiagLog('dashboard.load_pending', { loadId, date, silent });
-    }, 5000);
-    console.log(`[Dashboard] load start #${loadId}`, { date, silent });
-    appendDiagLog('dashboard.load_start', { loadId, date, silent });
+    if (inFlight) {
+      if (!silent) {
+        queuedLoad = { date, silent: false };
+      }
+      return;
+    }
 
-    pendingCount += 1;
+    inFlight = true;
+    queuedLoad = null;
     if (!silent) {
       loading = true;
-      scheduleLoadingWatchdog();
     }
     error = null;
 
@@ -160,19 +109,14 @@
         loadDemoData();
       }
     } finally {
-      clearTimeout(warnTimer);
-      const duration = Math.round(((typeof performance !== 'undefined' && performance.now)
-        ? performance.now()
-        : Date.now()) - start);
-      pendingCount = Math.max(0, pendingCount - 1);
-      if (pendingCount === 0 && loadingWatchdog) {
-        clearTimeout(loadingWatchdog);
-        loadingWatchdog = null;
-      }
-      console.log(`[Dashboard] load end #${loadId} (${duration}ms)`);
-      appendDiagLog('dashboard.load_end', { loadId, duration, pendingCount });
       if (!silent) {
         loading = false;
+      }
+      inFlight = false;
+      if (queuedLoad) {
+        const nextLoad = queuedLoad;
+        queuedLoad = null;
+        loadDashboardData(nextLoad.date, { silent: nextLoad.silent });
       }
     }
   }
@@ -205,11 +149,6 @@
     .reduce((sum, t) => sum + t.duration, 0);
 
   function updateCharts() {
-    appendDiagLog('dashboard.updateCharts_start', {
-      tagCount: tagStats.length,
-      hourlyCount: hourlyStats.length,
-      processCount: processStats.length
-    });
     // Pie Chart 업데이트
     if (pieChart) {
       pieChart.data.labels = tagStats.map(t => t.name);
@@ -240,11 +179,9 @@
       barChart.data.datasets = Array.from(tagMap.values());
       barChart.update();
     }
-    appendDiagLog('dashboard.updateCharts_end');
   }
 
   function initCharts() {
-    appendDiagLog('dashboard.initCharts_start');
     // Pie Chart
     const pieCtx = document.getElementById('tagPieChart');
     if (pieCtx && !pieChart) {
@@ -313,10 +250,6 @@
         }
       });
     }
-    appendDiagLog('dashboard.initCharts_end', {
-      pieReady: Boolean(pieChart),
-      barReady: Boolean(barChart)
-    });
   }
 
   function changeDate(delta) {
@@ -324,11 +257,22 @@
   }
 
   onMount(() => {
-    // 차트 먼저 초기화
-    initCharts();
+    if (typeof window !== 'undefined') {
+      hasDelayedInit = window.__dashboardInitDelayed === true;
+      if (!hasDelayedInit) {
+        window.__dashboardInitDelayed = true;
+      }
+    }
 
-    // 그 다음 데이터 로드 (로드 완료 후 updateCharts 호출됨)
-    loadDashboardData($selectedDate);
+    // 앱 최초 진입 때만 차트 초기화를 지연
+    if (!hasDelayedInit) {
+      setTimeout(() => {
+        initCharts();
+      }, 800);
+    } else {
+      initCharts();
+    }
+    hasMounted = true;
 
     return () => {
       pieChart?.destroy();

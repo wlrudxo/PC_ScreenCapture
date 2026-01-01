@@ -5,106 +5,13 @@
   import { theme } from '../stores/theme.js';
   import Toast from './Toast.svelte';
 
-  let eventLoopTimer = null;
-  let lastTick = 0;
-  let heartbeatTimer = null;
-
-  function appendDiagLog(message, data = null) {
-    if (typeof window === 'undefined') return;
-    try {
-      const runId = window.__diagRunId || localStorage.getItem('debug.frontendRunId') || null;
-      const entry = {
-        ts: new Date().toISOString(),
-        message,
-        data,
-        runId
-      };
-      const existing = JSON.parse(localStorage.getItem('debug.frontendLogs') || '[]');
-      existing.push(entry);
-      const trimmed = existing.slice(-1000);
-      localStorage.setItem('debug.frontendLogs', JSON.stringify(trimmed));
-      const baseUrl = (window.location.protocol === 'file:')
-        ? 'http://127.0.0.1:8000'
-        : '';
-      fetch(`${baseUrl}/api/frontend-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-        keepalive: true
-      }).catch(() => {});
-    } catch (err) {
-      console.warn('[Diag] Failed to store log', err);
-    }
-  }
-
   onMount(() => {
-    const runId = `run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    window.__diagRunId = runId;
-    localStorage.setItem('debug.frontendRunId', runId);
     theme.init();
     connectWebSocket();
-
-    appendDiagLog('ui.run_start', { runId, userAgent: navigator.userAgent });
-    appendDiagLog('ui.mounted');
-
-    const onError = (event) => {
-      appendDiagLog('ui.error', { message: event?.message });
-    };
-    const onUnhandled = (event) => {
-      appendDiagLog('ui.unhandled_rejection', { reason: event?.reason?.message || String(event?.reason) });
-    };
-
-    window.addEventListener('error', onError);
-    window.addEventListener('unhandledrejection', onUnhandled);
-
-    lastTick = Date.now();
-    eventLoopTimer = setInterval(() => {
-      const now = Date.now();
-      const lag = now - lastTick - 500;
-      if (lag > 2000) {
-        console.warn('[UI] Event loop lag detected', { lag });
-        appendDiagLog('ui.event_loop_lag', { lag });
-      }
-      lastTick = now;
-    }, 500);
-
-    let heartbeatCount = 0;
-    heartbeatTimer = setInterval(() => {
-      heartbeatCount += 1;
-      appendDiagLog('ui.heartbeat', { n: heartbeatCount });
-    }, 1000);
-
-    const onVisibilityChange = () => {
-      appendDiagLog('ui.visibility', { state: document.visibilityState });
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    return () => {
-      window.removeEventListener('error', onError);
-      window.removeEventListener('unhandledrejection', onUnhandled);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      if (eventLoopTimer) {
-        clearInterval(eventLoopTimer);
-        eventLoopTimer = null;
-      }
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-    };
   });
 
   onDestroy(() => {
     disconnectWebSocket();
-    appendDiagLog('ui.unmounted');
-    if (eventLoopTimer) {
-      clearInterval(eventLoopTimer);
-      eventLoopTimer = null;
-    }
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer);
-      heartbeatTimer = null;
-    }
   });
 
   const navItems = [

@@ -8,7 +8,6 @@ import mimetypes
 import os
 import subprocess
 import sys
-import json
 
 # Windows MIME type 문제 해결
 mimetypes.add_type("application/javascript", ".js")
@@ -207,12 +206,6 @@ app.add_middleware(
 
 
 # === Dashboard Endpoints ===
-
-class FrontendLogEntry(BaseModel):
-    ts: str
-    message: str
-    data: Optional[Any] = None
-    runId: Optional[str] = None
 
 @app.get("/api/dashboard/daily")
 async def get_dashboard_daily(date: str = Query(..., description="YYYY-MM-DD format")):
@@ -1422,26 +1415,6 @@ async def websocket_activity(websocket: WebSocket):
 async def health_check():
     """헬스 체크"""
     return {"status": "ok", "timestamp": datetime.now().isoformat(), "api_version": API_VERSION}
-
-@app.post("/api/frontend-log")
-async def frontend_log(entry: FrontendLogEntry):
-    """프론트엔드 진단 로그 저장"""
-    try:
-        from backend.config import AppConfig
-        log_path = AppConfig.get_log_dir() / "frontend.log"
-        payload = {
-            "server_ts": datetime.now().isoformat(),
-            "ts": entry.ts,
-            "message": entry.message,
-            "data": entry.data,
-            "runId": entry.runId
-        }
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-        return {"status": "ok"}
-    except Exception as e:
-        print(f"[FrontendLog] Failed to write log: {e}")
-        return {"status": "error"}
 
 
 # === System ===

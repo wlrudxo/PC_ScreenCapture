@@ -23,43 +23,6 @@ const API_BASE = getApiBase();
 /**
  * Fetch wrapper with error handling
  */
-const DIAG_KEY = 'debug.frontendLogs';
-
-function getNowMs() {
-  return (typeof performance !== 'undefined' && performance.now)
-    ? performance.now()
-    : Date.now();
-}
-
-function appendDiagLog(message, data = null) {
-  if (typeof window === 'undefined') return;
-  try {
-    const runId = window.__diagRunId || localStorage.getItem('debug.frontendRunId') || null;
-    const entry = {
-      ts: new Date().toISOString(),
-      message,
-      data,
-      runId
-    };
-    const existing = JSON.parse(localStorage.getItem(DIAG_KEY) || '[]');
-    existing.push(entry);
-    const trimmed = existing.slice(-1000);
-    localStorage.setItem(DIAG_KEY, JSON.stringify(trimmed));
-    const baseUrl = (window.location.protocol === 'file:')
-      ? 'http://127.0.0.1:8000'
-      : '';
-    fetch(`${baseUrl}/api/frontend-log`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(entry),
-      keepalive: true
-    }).catch(() => {});
-  } catch (err) {
-    // Avoid recursive failures when storage is unavailable.
-    console.warn('[Diag] Failed to store log', err);
-  }
-}
-
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const config = {
@@ -70,34 +33,16 @@ async function request(endpoint, options = {}) {
     ...options
   };
 
-  const start = getNowMs();
-  let response;
-  appendDiagLog('api.start', { endpoint });
-
-  try {
-    response = await fetch(url, config);
-  } catch (err) {
-    const duration = Math.round(getNowMs() - start);
-    appendDiagLog('api.network_error', { endpoint, duration, message: err?.message });
-    console.error(`[API] ${endpoint} network error after ${duration}ms`, err);
-    throw err;
-  }
+  const response = await fetch(url, config);
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
     const error = new Error(errorBody.detail || 'API request failed');
     error.status = response.status;
-    const duration = Math.round(getNowMs() - start);
-    appendDiagLog('api.failed', { endpoint, status: response.status, duration });
-    console.error(`[API] ${endpoint} failed ${response.status} after ${duration}ms`);
     throw error;
   }
 
-  const data = await response.json();
-  const duration = Math.round(getNowMs() - start);
-  appendDiagLog('api.ok', { endpoint, duration });
-  console.log(`[API] ${endpoint} ${duration}ms`);
-  return data;
+  return response.json();
 }
 
 /**

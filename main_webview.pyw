@@ -620,7 +620,10 @@ class ActivityTrackerApp:
         # WebView 시작 (메인 스레드에서 실행)
         # EdgeChromium 백엔드 사용 (Windows 10/11 기본 탑재)
         webview.start(
-            debug=os.environ.get('DEV_MODE') == '1',
+            debug=(
+                os.environ.get('DEV_MODE') == '1'
+                or os.environ.get('WEBVIEW_DEBUG') == '1'
+            ),
             gui='edgechromium',
             storage_path=str(self._webview_profile_dir)
         )

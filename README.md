@@ -16,6 +16,8 @@
 **Activity Tracker**는 활성 창, Chrome URL, 잠금/유휴 상태를 감지해 활동을 자동 분류하고 통계를 제공하는 PyWebView 기반 앱입니다.
 웹 UI(Svelte)를 내장해 대시보드/타임라인/분석/설정을 제공합니다.
 
+![대시보드](docs/images/dashboard.png)
+
 ### 핵심 기능
 
 - **실시간 활동 모니터링**
@@ -55,11 +57,22 @@
 
 ## 다운로드
 
-[v1.0.0 다운로드](https://github.com/wlrudxo/PC_ScreenCapture/releases/latest)
+[📥 최신 릴리즈 다운로드](https://github.com/wlrudxo/PC_ActivityTracker/releases/latest)
 
 1. `ActivityTracker.zip` 다운로드
 2. 원하는 위치에 압축 해제
 3. `ActivityTracker.exe` 실행
+
+### Chrome 확장 프로그램 설치
+
+Chrome URL을 추적하려면 확장 프로그램을 설치하세요:
+
+1. `chrome://extensions/` 접속
+2. **개발자 모드** 활성화 (우측 상단)
+3. **압축해제된 확장 프로그램을 로드합니다** 클릭
+4. `chrome_extension` 폴더 선택
+
+> 확장 프로그램이 없어도 활성 창 추적은 정상 작동합니다.
 
 ---
 
@@ -76,8 +89,8 @@
 
 ```bash
 # 1. 저장소 클론
-git clone https://github.com/wlrudxo/PC_ScreenCapture.git
-cd PC_ScreenCapture
+git clone https://github.com/wlrudxo/PC_ActivityTracker.git
+cd PC_ActivityTracker
 
 # 2. Python 가상환경 생성 및 활성화
 python -m venv venv
@@ -113,19 +126,6 @@ python main_webview.pyw --dev
 ```
 
 개발 모드에서는 `http://localhost:5173`의 Vite 서버를 사용합니다.
-
----
-
-## Chrome 확장 프로그램 설치 (선택)
-
-Chrome URL을 추적하려면 확장 프로그램을 설치하세요:
-
-1. `chrome://extensions/` 접속
-2. **개발자 모드** 활성화
-3. **압축해제된 확장 프로그램을 로드합니다** 클릭
-4. `chrome_extension` 폴더 선택
-
-> 확장 프로그램이 없어도 활성 창 추적은 정상 작동합니다.
 
 ---
 
@@ -175,7 +175,7 @@ Windows 알림 설정을 확인하세요:
 ## 프로젝트 구조
 
 ```
-PC_ScreenCapture/
+PC_ActivityTracker/
 ├── main_webview.pyw             # 앱 진입점 (PyWebView + pystray)
 ├── requirements.txt             # Python 의존성
 ├── ARCHITECTURE.md              # 아키텍처 문서

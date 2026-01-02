@@ -48,7 +48,7 @@ build/
 .DS_Store
 Thumbs.db
 sounds/
-images/
+/images/
 *.lnk
 
 # PyWebView runtime cache

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Activity Tracker",
   "version": "1.0",
-  "description": "연구실 딴짓 추적용 URL 전송",
+  "description": "크롬 활동 URL 추적용",
   "permissions": [
     "tabs",
     "webNavigation",

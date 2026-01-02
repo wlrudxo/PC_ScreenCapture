@@ -7,6 +7,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green.svg)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-yellow.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
+![License](https://img.shields.io/badge/License-MIT-purple.svg)
 
 ---
 
@@ -227,3 +228,9 @@ PC_ScreenCapture/
 **Chrome Extension**
 - Manifest V3
 - WebSocket client
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

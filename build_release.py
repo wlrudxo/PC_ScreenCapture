@@ -22,7 +22,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # PyInstaller가 설치된 Python 3.12 경로 (py launcher 사용)
-PYTHON_312 = None
+PYTHON_PATH = None
 
 # === 설정 ===
 PROJECT_DIR = Path(__file__).parent
@@ -66,28 +66,41 @@ def need_rebuild() -> bool:
     return source_mtime > exe_mtime
 
 
-def get_python_312() -> str:
-    """PyInstaller가 설치된 Python 3.12 경로 찾기"""
-    global PYTHON_312
-    if PYTHON_312:
-        return PYTHON_312
+def get_python() -> str:
+      """PyInstaller가 설치된 Python 경로 찾기 (3.12 → 3.11 → 3.10 → 현재)"""
+      global PYTHON_PATH
+      if PYTHON_PATH:
+          return PYTHON_PATH
 
-    # py launcher로 3.12 경로 확인
-    try:
-        result = subprocess.run(
-            ["py", "-3.12", "-c", "import sys; print(sys.executable)"],
-            capture_output=True, text=True, check=True
-        )
-        PYTHON_312 = result.stdout.strip()
-        return PYTHON_312
-    except subprocess.CalledProcessError:
-        print("  ❌ Python 3.12 not found! Install it or check 'py --list'")
-        sys.exit(1)
+      # py launcher로 버전 순서대로 시도
+      for version in ["3.12", "3.11", "3.10"]:
+          try:
+              result = subprocess.run(
+                  ["py", f"-{version}", "-c", "import sys; print(sys.executable)"],
+                  capture_output=True, text=True, check=True
+              )
+              python_path = result.stdout.strip()
+              # PyInstaller 설치 여부 확인
+              check = subprocess.run(
+                  [python_path, "-m", "PyInstaller", "--version"],
+                  capture_output=True, text=True
+              )
+              if check.returncode == 0:
+                  print(f"  → Using Python {version}: {python_path}")
+                  PYTHON_PATH = python_path
+                  return PYTHON_PATH
+          except (subprocess.CalledProcessError, FileNotFoundError):
+              continue
+
+      # fallback: 현재 실행 중인 Python
+      print(f"  → Using current Python: {sys.executable}")
+      PYTHON_PATH = sys.executable
+      return PYTHON_PATH
 
 
 def run_pyinstaller():
     """PyInstaller 빌드 실행 (Python 3.12 사용)"""
-    python = get_python_312()
+    python = get_python()
     cmd = [python, "-m", "PyInstaller", str(SPEC_FILE), "--noconfirm"]
     print(f"  Running: {' '.join(cmd)}")
 
